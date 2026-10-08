@@ -1,3 +1,11 @@
+import os
+# Override DATABASE_URL *before* any app module is imported.
+# app.database.session creates the SQLAlchemy engine at module-load time using
+# get_settings().DATABASE_URL.  By setting this env var here first, we ensure
+# the module-level `engine` is a local aiosqlite engine instead of the
+# production Supabase PostgreSQL engine.  Production .env is never modified.
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
+
 import pytest
 from typing import AsyncGenerator
 from httpx import AsyncClient, ASGITransport

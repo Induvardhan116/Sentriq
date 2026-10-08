@@ -2,6 +2,16 @@ import pytest
 from typing import AsyncGenerator
 from httpx import AsyncClient, ASGITransport
 from app.main import app
+from app.database.session import engine
+from app.models.base import Base
+
+
+@pytest.fixture(autouse=True)
+async def init_test_db():
+    """Ensure database tables exist for test execution."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
 
 
 @pytest.fixture

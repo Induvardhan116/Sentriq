@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     # Database configuration (defaults to async SQLite)
     DATABASE_URL: str = "sqlite+aiosqlite:///./sentriq.db"
 
+    # Scanner safety & limits
+    ALLOW_INTERNAL_TARGETS: bool = False
+    SCANNER_TIMEOUT_SECONDS: float = 10.0
+    SCANNER_MAX_RESPONSE_SIZE: int = 2097152  # 2MB
+    SCANNER_USER_AGENT: str = "Sentriq-Security-Scanner/0.2.0 (+https://github.com/Induvardhan116/Sentriq; security-assessment)"
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

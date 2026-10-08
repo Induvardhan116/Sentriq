@@ -9,7 +9,7 @@ export const PhaseRoadmapCard: React.FC = () => {
           <Layers size={18} color="var(--accent-cyan)" />
           <h2 className="card-title">Engineering Roadmap & Phase Execution</h2>
         </div>
-        <span className="badge badge-cyan">Phase 1 of 12</span>
+        <span className="badge badge-cyan">Phase 2 of 12</span>
       </div>
 
       <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
@@ -17,7 +17,7 @@ export const PhaseRoadmapCard: React.FC = () => {
       </p>
 
       <div className="roadmap-list">
-        <div className="roadmap-item current">
+        <div className="roadmap-item">
           <div className="roadmap-bullet done">
             <CheckCircle2 size={13} />
           </div>
@@ -32,15 +32,17 @@ export const PhaseRoadmapCard: React.FC = () => {
           </div>
         </div>
 
-        <div className="roadmap-item">
-          <div className="roadmap-bullet pending">2</div>
+        <div className="roadmap-item current">
+          <div className="roadmap-bullet done">
+            <CheckCircle2 size={13} />
+          </div>
           <div className="roadmap-details">
             <div className="roadmap-title">
-              <span>Phase 2: Authentication & Authorized Projects</span>
-              <span className="badge badge-cyan" style={{ fontSize: '0.62rem', padding: '2px 6px' }}>NEXT</span>
+              <span>Phase 2: Website Security Scanner & Projects</span>
+              <span className="badge badge-emerald" style={{ fontSize: '0.62rem', padding: '2px 6px' }}>ACTIVE</span>
             </div>
             <div className="roadmap-desc">
-              User identity, GitHub OAuth integration, project registration with mandatory ownership & authorization confirmation.
+              Authorized target projects, safe non-destructive scanner (HTTPS/TLS, headers, cookies, CORS, exposure), finding normalization & risk engine.
             </div>
           </div>
         </div>
@@ -49,10 +51,11 @@ export const PhaseRoadmapCard: React.FC = () => {
           <div className="roadmap-bullet pending">3</div>
           <div className="roadmap-details">
             <div className="roadmap-title">
-              <span>Phase 3: Defensive Website Security Scanner</span>
+              <span>Phase 3: Authentication & GitHub OAuth</span>
+              <span className="badge badge-cyan" style={{ fontSize: '0.62rem', padding: '2px 6px' }}>NEXT</span>
             </div>
             <div className="roadmap-desc">
-              Non-destructive HTTPS/TLS, security headers, cookie flags, CORS rules, and safe information exposure checks.
+              User identity, GitHub OAuth integration, authenticated sessions, and multi-tenant project isolation.
             </div>
           </div>
         </div>
@@ -61,10 +64,10 @@ export const PhaseRoadmapCard: React.FC = () => {
           <div className="roadmap-bullet pending">4</div>
           <div className="roadmap-details">
             <div className="roadmap-title">
-              <span>Phase 4 & 5: Finding Normalization & Risk Engine</span>
+              <span>Phase 4 & 5: Advanced Risk Engine & Scoring Models</span>
             </div>
             <div className="roadmap-desc">
-              Common security finding schema, explainable risk algorithm (0-100), and holistic security posture scoring.
+              Multi-dimensional threat correlation, asset weighting, and automated regression tracking across scans.
             </div>
           </div>
         </div>

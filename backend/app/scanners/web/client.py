@@ -24,11 +24,19 @@ class SafeResponse:
 class SafeHttpClient:
     """Controlled, asynchronous HTTP client enforcing security boundaries."""
 
-    def __init__(self, timeout: Optional[float] = None, max_size: Optional[int] = None):
+    def __init__(
+        self,
+        timeout: Optional[float] = None,
+        max_size: Optional[int] = None,
+        allow_internal: Optional[bool] = None,
+    ):
         settings = get_settings()
         self.timeout = timeout or settings.SCANNER_TIMEOUT_SECONDS
         self.max_size = max_size or settings.SCANNER_MAX_RESPONSE_SIZE
         self.user_agent = settings.SCANNER_USER_AGENT
+        self.allow_internal = (
+            allow_internal if allow_internal is not None else settings.ALLOW_INTERNAL_TARGETS
+        )
 
     async def get(
         self,
@@ -59,7 +67,19 @@ class SafeHttpClient:
                 verify=False,  # We allow probing self-signed/expired targets to detect TLS issues
                 follow_redirects=False,  # We handle redirects manually up to max_redirects
             ) as client:
-                current_url = url
+                from app.scanners.web.validator import validate_target_url
+                is_valid, reason, norm_url = validate_target_url(
+                    url, allow_internal=self.allow_internal
+                )
+                if not is_valid or not norm_url:
+                    return SafeResponse(
+                        url=url,
+                        status_code=0,
+                        headers={},
+                        error=f"Request blocked by SSRF protection: {reason or 'Prohibited target'}",
+                    )
+
+                current_url = norm_url
                 redirect_count = 0
 
                 while True:
@@ -71,7 +91,21 @@ class SafeHttpClient:
                         if not location:
                             break
                         # Resolve relative redirect URLs
-                        current_url = str(response.url.join(location))
+                        candidate_url = str(response.url.join(location))
+                        # Enforce SSRF validation on redirect destination
+                        from app.scanners.web.validator import validate_target_url
+                        is_valid, reason, norm_candidate = validate_target_url(
+                            candidate_url, allow_internal=self.allow_internal
+                        )
+                        if not is_valid or not norm_candidate:
+                            return SafeResponse(
+                                url=candidate_url,
+                                status_code=response.status_code,
+                                headers=dict(response.headers),
+                                redirect_history=redirect_history,
+                                error=f"Redirect blocked by SSRF protection: {reason or 'Prohibited redirect target'}",
+                            )
+                        current_url = norm_candidate
                         redirect_count += 1
                         continue
 
@@ -122,6 +156,18 @@ class SafeHttpClient:
 
     async def head(self, url: str) -> SafeResponse:
         """Perform a safe, bounded HTTP HEAD probe."""
+        from app.scanners.web.validator import validate_target_url
+        is_valid, reason, norm_url = validate_target_url(
+            url, allow_internal=self.allow_internal
+        )
+        if not is_valid or not norm_url:
+            return SafeResponse(
+                url=url,
+                status_code=0,
+                headers={},
+                error=f"Request blocked by SSRF protection: {reason or 'Prohibited target'}",
+            )
+
         try:
             async with httpx.AsyncClient(
                 timeout=self.timeout,

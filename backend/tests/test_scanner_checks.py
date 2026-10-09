@@ -121,3 +121,83 @@ def test_debug_traceback_exposure():
     findings = check_information_exposure(resp)
     titles = [f["title"] for f in findings]
     assert "Active Debug Screen or Stack Trace Exposed" in titles
+
+
+@pytest.mark.asyncio
+async def test_https_tls_expired_certificate():
+    """Verify that an expired SSL/TLS certificate produces a critical finding."""
+    from unittest.mock import patch
+    from app.scanners.web.checks.https import check_https_tls
+
+    mock_cert_info = {
+        "connected": True,
+        "expired": True,
+        "expires_in_days": -120,
+        "valid_hostname": True,
+        "version": "TLSv1.3",
+        "error": "certificate verify failed: certificate has expired",
+        "subject_alt_names": ["target.example"],
+    }
+
+    client = SafeHttpClient()
+    with patch("app.scanners.web.checks.https._inspect_ssl_cert", return_value=mock_cert_info):
+        with patch.object(client, "get", return_value=SafeResponse(url="http://target.example", status_code=301, headers={"location": "https://target.example"})):
+            findings = await check_https_tls("https://target.example", client)
+
+    titles = [f["title"] for f in findings]
+    assert "Expired SSL/TLS Certificate" in titles
+    expired_finding = next(f for f in findings if f["title"] == "Expired SSL/TLS Certificate")
+    assert expired_finding["severity"] == "critical"
+    assert expired_finding["confidence"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_https_tls_hostname_mismatch():
+    """Verify that certificate hostname mismatch produces a high severity finding."""
+    from unittest.mock import patch
+    from app.scanners.web.checks.https import check_https_tls
+
+    mock_cert_info = {
+        "connected": True,
+        "expired": False,
+        "expires_in_days": 180,
+        "valid_hostname": False,
+        "version": "TLSv1.3",
+        "error": "hostname 'other.example' doesn't match 'target.example'",
+        "subject_alt_names": ["other.example"],
+    }
+
+    client = SafeHttpClient()
+    with patch("app.scanners.web.checks.https._inspect_ssl_cert", return_value=mock_cert_info):
+        with patch.object(client, "get", return_value=SafeResponse(url="http://target.example", status_code=301, headers={"location": "https://target.example"})):
+            findings = await check_https_tls("https://target.example", client)
+
+    titles = [f["title"] for f in findings]
+    assert "SSL/TLS Certificate Hostname Mismatch" in titles
+    mismatch_finding = next(f for f in findings if f["title"] == "SSL/TLS Certificate Hostname Mismatch")
+    assert mismatch_finding["severity"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_https_tls_untrusted_self_signed():
+    """Verify that an untrusted or self-signed certificate produces an appropriate finding."""
+    from unittest.mock import patch
+    from app.scanners.web.checks.https import check_https_tls
+
+    mock_cert_info = {
+        "connected": True,
+        "expired": False,
+        "expires_in_days": 180,
+        "valid_hostname": True,
+        "version": "TLSv1.3",
+        "error": "[SSL: CERTIFICATE_VERIFY_FAILED] self-signed certificate in certificate chain",
+        "subject_alt_names": ["target.example"],
+    }
+
+    client = SafeHttpClient()
+    with patch("app.scanners.web.checks.https._inspect_ssl_cert", return_value=mock_cert_info):
+        with patch.object(client, "get", return_value=SafeResponse(url="http://target.example", status_code=301, headers={"location": "https://target.example"})):
+            findings = await check_https_tls("https://target.example", client)
+
+    titles = [f["title"] for f in findings]
+    assert "Untrusted or Self-Signed SSL/TLS Certificate" in titles

@@ -1,7 +1,7 @@
-import { SystemHealth } from '../types/system';
-import { Project, ProjectCreate } from '../types/project';
-import { Scan, ScanSummary } from '../types/scan';
-import { Finding, FindingStatus } from '../types/finding';
+import type { SystemHealth } from '../types/system';
+import type { Project, ProjectCreate } from '../types/project';
+import type { Scan, ScanSummary } from '../types/scan';
+import type { Finding, FindingStatus } from '../types/finding';
 
 /**
  * In production (Vercel), VITE_API_BASE_URL is set to the full backend origin
@@ -12,22 +12,28 @@ import { Finding, FindingStatus } from '../types/finding';
  *
  * We strip a trailing slash so that path concatenation is always clean.
  */
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+const RAW_BASE =
+  (typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL) ||
+  (typeof globalThis !== 'undefined' && (globalThis as { process?: { env?: Record<string, string> } }).process?.env?.VITE_API_BASE_URL) ||
+  '';
+const API_BASE = RAW_BASE.replace(/\/$/, '');
 
 /**
- * Build a full URL for a given API path segment.
- *
- * @param path - must start with '/api/...'  (matches the Vite proxy pattern)
- *
- * When API_BASE is empty (local dev), the path is used as-is → proxy handles it.
- * When API_BASE is "https://sentriq.onrender.com/api", the leading "/api" in
- * the path is stripped to avoid "/api/api/..." duplication.
+ * Pure helper to construct normalized API URLs across various deployment base URL formats.
+ * Handles bases ending in '/api', '/api/', with no '/api', and empty string (local dev).
  */
-function apiUrl(path: string): string {
-  if (!API_BASE) return path;          // local dev – rely on Vite proxy
-  // API_BASE already ends with "/api", so remove the leading "/api" from path
-  const stripped = path.startsWith('/api') ? path.slice(4) : path;
-  return `${API_BASE}${stripped}`;
+export function buildApiUrl(base: string, path: string): string {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  if (!base) return normalizedPath;
+  const baseOrigin = base.replace(/\/api\/?$/, '').replace(/\/$/, '');
+  return `${baseOrigin}${normalizedPath}`;
+}
+
+/**
+ * Build a full URL for a given API path segment using application config.
+ */
+export function apiUrl(path: string): string {
+  return buildApiUrl(API_BASE, path);
 }
 
 export async function fetchSystemHealth(): Promise<{

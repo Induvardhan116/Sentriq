@@ -1,4 +1,4 @@
-import { Finding } from './finding';
+import type { Finding } from './finding';
 
 export interface Scan {
   id: string;

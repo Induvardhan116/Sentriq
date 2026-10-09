@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft,
   RefreshCw,
+  Play,
   ShieldCheck,
   AlertOctagon,
   Clock,
@@ -10,7 +11,8 @@ import {
 } from 'lucide-react';
 import { Scan } from '../types/scan';
 import { Finding } from '../types/finding';
-import { fetchScan, fetchScanFindings } from '../services/api';
+import { fetchScan, fetchScanFindings, triggerScan } from '../services/api';
+import { navigate } from '../utils/routing';
 import { FindingDetailModal } from './FindingDetailModal';
 
 interface ScanDetailViewProps {
@@ -30,39 +32,92 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
+  const [isRescanning, setIsRescanning] = useState<boolean>(false);
 
-  const loadScanData = useCallback(async () => {
-    setLoadError(null);
-    try {
-      const [scanData, findingsData] = await Promise.all([
-        fetchScan(scanId),
-        fetchScanFindings(scanId),
-      ]);
-      setScan(scanData);
-      setFindings(findingsData);
+  const isFetchingRef = React.useRef<boolean>(false);
+  const scanRef = React.useRef<Scan | null>(null);
+  scanRef.current = scan;
 
-      // Restore finding modal if specified in route URL
-      if (initialFindingId) {
-        const match = findingsData.find((f) => f.id === initialFindingId);
-        if (match) setSelectedFinding(match);
+  const loadScanData = useCallback(
+    async (isManualRefresh = false) => {
+      // Prevent duplicate simultaneous requests
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+
+      if (isManualRefresh) {
+        setIsRefreshing(true);
+        setRefreshError(null);
+      } else if (!scanRef.current) {
+        setLoading(true);
+        setLoadError(null);
       }
+
+      try {
+        const [scanData, findingsData] = await Promise.all([
+          fetchScan(scanId),
+          fetchScanFindings(scanId),
+        ]);
+
+        setScan(scanData);
+        setFindings(findingsData);
+        setRefreshError(null);
+        setLoadError(null);
+
+        // Keep finding details modal synchronized with fresh data / updated status
+        setSelectedFinding((prev) => {
+          if (prev) {
+            const updated = findingsData.find((f) => f.id === prev.id);
+            return updated || prev;
+          }
+          if (initialFindingId) {
+            const match = findingsData.find((f) => f.id === initialFindingId);
+            return match || null;
+          }
+          return null;
+        });
+      } catch (err) {
+        console.error('Failed to load scan details:', err);
+        const errMsg = err instanceof Error ? err.message : 'Failed to refresh scan details.';
+        if (scanRef.current) {
+          setRefreshError(errMsg);
+        } else {
+          setLoadError(errMsg);
+        }
+      } finally {
+        setLoading(false);
+        if (isManualRefresh) {
+          setIsRefreshing(false);
+        }
+        isFetchingRef.current = false;
+      }
+    },
+    [scanId, initialFindingId]
+  );
+
+  const handleRescan = async () => {
+    if (!scan) return;
+    setIsRescanning(true);
+    try {
+      const newScan = await triggerScan(scan.project_id);
+      navigate({ view: 'scan', scanId: newScan.id });
     } catch (err) {
-      console.error('Failed to load scan details:', err);
-      setLoadError(err instanceof Error ? err.message : 'Failed to load scan.');
+      console.error('Failed to trigger rescan:', err);
     } finally {
-      setLoading(false);
+      setIsRescanning(false);
     }
-  }, [scanId, initialFindingId]);
+  };
 
   useEffect(() => {
-    loadScanData();
+    loadScanData(false);
 
     // Auto-poll if scan is running or queued
     const interval = setInterval(() => {
       if (scan?.status === 'running' || scan?.status === 'queued') {
-        loadScanData();
+        loadScanData(false);
       }
     }, 2500);
 
@@ -149,15 +204,65 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
           </span>
 
           <button
-            className="btn-secondary"
-            onClick={loadScanData}
-            title="Refresh scan"
-            style={{ padding: '6px 10px' }}
+            className="btn-primary"
+            onClick={handleRescan}
+            disabled={isRescanning || isRunning}
+            title="Run new assessment scan on this target"
+            style={{ padding: '6px 12px', fontSize: '0.78rem' }}
           >
-            <RefreshCw size={13} style={{ animation: isRunning ? 'spin 1s linear infinite' : 'none' }} />
+            <Play size={13} style={{ fill: 'currentColor' }} />
+            <span>{isRescanning ? 'Starting...' : 'Rescan'}</span>
+          </button>
+
+          <button
+            className="btn-secondary"
+            onClick={() => loadScanData(true)}
+            disabled={isRefreshing}
+            title={isRefreshing ? 'Refreshing scan...' : 'Refresh scan'}
+            style={{
+              padding: '6px 10px',
+              opacity: isRefreshing ? 0.7 : 1,
+              cursor: isRefreshing ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <RefreshCw
+              size={13}
+              style={{
+                animation: isRefreshing || isRunning ? 'spin 1s linear infinite' : 'none',
+              }}
+            />
           </button>
         </div>
       </div>
+
+      {/* Refresh Error Alert Banner */}
+      {refreshError && (
+        <div
+          className="surface-card"
+          style={{
+            padding: '12px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderLeft: '4px solid var(--accent-rose)',
+            backgroundColor: 'rgba(244, 63, 94, 0.08)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <AlertOctagon size={16} color="var(--accent-rose)" />
+            <span style={{ fontSize: '0.84rem', color: 'var(--accent-rose)', fontWeight: 500 }}>
+              Failed to refresh scan: {refreshError}
+            </span>
+          </div>
+          <button
+            className="btn-secondary"
+            onClick={() => setRefreshError(null)}
+            style={{ padding: '2px 8px', fontSize: '0.74rem' }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Target & Score Hero Card */}
       <div className="hero-card" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '20px' }}>
@@ -303,7 +408,17 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
           </div>
         )}
 
-        {filteredFindings.length === 0 && !isRunning ? (
+        {scan.status === 'failed' ? (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+            <AlertOctagon size={36} color="var(--accent-rose)" style={{ margin: '0 auto 10px' }} />
+            <p style={{ fontSize: '0.95rem', color: 'var(--accent-rose)', fontWeight: 600 }}>
+              Security assessment failed
+            </p>
+            <p style={{ fontSize: '0.82rem', marginTop: '6px', color: 'var(--text-secondary)' }}>
+              {scan.error_message || 'An error occurred during the assessment scan.'}
+            </p>
+          </div>
+        ) : filteredFindings.length === 0 && !isRunning ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <ShieldCheck size={36} color="var(--accent-emerald)" style={{ margin: '0 auto 10px' }} />
             <p style={{ fontSize: '0.92rem', color: 'var(--text-primary)', fontWeight: 600 }}>

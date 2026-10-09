@@ -134,3 +134,31 @@ async def test_project_lifecycle_and_scan_e2e(async_client: AsyncClient):
         assert summary["overall_score"] == 68
         assert summary["severity_breakdown"]["medium"] == 2
         assert len(summary["top_risks"]) == 2
+
+        # 9. Verify finding status persistence across refetch (simulating page refresh)
+        refetch_resp = await async_client.get(f"/api/scans/{scan_id}/findings")
+        assert refetch_resp.status_code == 200
+        refetched_findings = refetch_resp.json()
+        persisted_finding = next(f for f in refetched_findings if f["id"] == finding_id)
+        assert persisted_finding["status"] == "resolved", "Finding status must persist in database on refetch"
+
+
+@pytest.mark.asyncio
+async def test_invalid_scan_id_returns_404(async_client: AsyncClient):
+    """Accessing an invalid or non-existent scan ID must return 404 with descriptive detail."""
+    invalid_id = "non-existent-scan-999"
+    resp = await async_client.get(f"/api/scans/{invalid_id}")
+    assert resp.status_code == 404
+    data = resp.json()
+    assert f"Scan with ID '{invalid_id}' does not exist." in data["detail"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_project_id_returns_404(async_client: AsyncClient):
+    """Accessing an invalid or non-existent project ID must return 404 with descriptive detail."""
+    invalid_id = "non-existent-proj-999"
+    resp = await async_client.get(f"/api/projects/{invalid_id}")
+    assert resp.status_code == 404
+    data = resp.json()
+    assert f"Project with ID '{invalid_id}' does not exist." in data["detail"]
+

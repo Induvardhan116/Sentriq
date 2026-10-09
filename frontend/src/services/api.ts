@@ -79,7 +79,10 @@ export async function createProject(payload: ProjectCreate): Promise<Project> {
 
 export async function fetchProject(id: string): Promise<Project> {
   const res = await fetch(apiUrl(`/api/projects/${id}`));
-  if (!res.ok) throw new Error(`Failed to fetch project: ${res.statusText}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch project: ${res.statusText}`);
+  }
   return res.json();
 }
 
@@ -96,13 +99,19 @@ export async function triggerScan(projectId: string): Promise<Scan> {
 
 export async function fetchScan(scanId: string): Promise<Scan> {
   const res = await fetch(apiUrl(`/api/scans/${scanId}`));
-  if (!res.ok) throw new Error(`Failed to fetch scan: ${res.statusText}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch scan: ${res.statusText}`);
+  }
   return res.json();
 }
 
 export async function fetchScanFindings(scanId: string): Promise<Finding[]> {
   const res = await fetch(apiUrl(`/api/scans/${scanId}/findings`));
-  if (!res.ok) throw new Error(`Failed to fetch findings: ${res.statusText}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch findings: ${res.statusText}`);
+  }
   return res.json();
 }
 

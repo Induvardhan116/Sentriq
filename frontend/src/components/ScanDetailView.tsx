@@ -15,17 +15,26 @@ import { FindingDetailModal } from './FindingDetailModal';
 
 interface ScanDetailViewProps {
   scanId: string;
+  initialFindingId?: string;
   onBack: () => void;
+  onSelectFinding?: (findingId: string | null) => void;
 }
 
-export const ScanDetailView: React.FC<ScanDetailViewProps> = ({ scanId, onBack }) => {
+export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
+  scanId,
+  initialFindingId,
+  onBack,
+  onSelectFinding,
+}) => {
   const [scan, setScan] = useState<Scan | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
 
   const loadScanData = useCallback(async () => {
+    setLoadError(null);
     try {
       const [scanData, findingsData] = await Promise.all([
         fetchScan(scanId),
@@ -33,12 +42,19 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({ scanId, onBack }
       ]);
       setScan(scanData);
       setFindings(findingsData);
+
+      // Restore finding modal if specified in route URL
+      if (initialFindingId) {
+        const match = findingsData.find((f) => f.id === initialFindingId);
+        if (match) setSelectedFinding(match);
+      }
     } catch (err) {
       console.error('Failed to load scan details:', err);
+      setLoadError(err instanceof Error ? err.message : 'Failed to load scan.');
     } finally {
       setLoading(false);
     }
-  }, [scanId]);
+  }, [scanId, initialFindingId]);
 
   useEffect(() => {
     loadScanData();
@@ -62,12 +78,35 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({ scanId, onBack }
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="surface-card" style={{ padding: '40px', textAlign: 'center' }}>
+        <AlertOctagon size={36} color="var(--accent-rose)" style={{ margin: '0 auto 12px' }} />
+        <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          {loadError}
+        </p>
+        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+          The scan ID in the URL may be invalid or the scan may have been deleted.
+        </p>
+        <button className="btn-secondary" onClick={onBack}>
+          <ArrowLeft size={14} /> Back to Projects
+        </button>
+      </div>
+    );
+  }
+
   if (!scan) {
     return (
-      <div className="surface-card">
-        <p>Scan not found.</p>
+      <div className="surface-card" style={{ padding: '40px', textAlign: 'center' }}>
+        <AlertOctagon size={36} color="var(--accent-rose)" style={{ margin: '0 auto 12px' }} />
+        <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
+          Scan not found.
+        </p>
+        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '20px' }}>
+          The scan ID in the URL may be invalid or the scan may have been deleted.
+        </p>
         <button className="btn-secondary" onClick={onBack}>
-          <ArrowLeft size={14} /> Back
+          <ArrowLeft size={14} /> Back to Projects
         </button>
       </div>
     );
@@ -282,7 +321,10 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({ scanId, onBack }
               <div
                 key={finding.id}
                 className="finding-row"
-                onClick={() => setSelectedFinding(finding)}
+                onClick={() => {
+                  setSelectedFinding(finding);
+                  onSelectFinding?.(finding.id);
+                }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
                   <span
@@ -332,7 +374,10 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({ scanId, onBack }
       {/* Finding Detail Modal */}
       <FindingDetailModal
         finding={selectedFinding}
-        onClose={() => setSelectedFinding(null)}
+        onClose={() => {
+          setSelectedFinding(null);
+          onSelectFinding?.(null);
+        }}
         onStatusChanged={(updated) => {
           setFindings((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
           setSelectedFinding(updated);

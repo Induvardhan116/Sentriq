@@ -16,6 +16,7 @@ interface ProjectListProps {
   loading: boolean;
   onOpenCreateModal: () => void;
   onSelectScan: (scanId: string) => void;
+  onSelectProject?: (projectId: string) => void;
   onProjectUpdated: () => void;
 }
 
@@ -24,6 +25,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
   loading,
   onOpenCreateModal,
   onSelectScan,
+  onSelectProject,
   onProjectUpdated,
 }) => {
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
@@ -106,9 +108,13 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                 key={project.id}
                 className="surface-card project-card"
                 onClick={() => {
-                  if (latestScan) onSelectScan(latestScan.id);
+                  if (latestScan) {
+                    onSelectScan(latestScan.id);
+                  } else if (onSelectProject) {
+                    onSelectProject(project.id);
+                  }
                 }}
-                style={{ cursor: latestScan ? 'pointer' : 'default', padding: '18px 22px' }}
+                style={{ cursor: 'pointer', padding: '18px 22px' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>

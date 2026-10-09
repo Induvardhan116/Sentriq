@@ -22,9 +22,12 @@ class Settings(BaseSettings):
     API_PORT: int = 8000
 
     # CORS configuration
+    # Includes the production Vercel frontend origin so requests are allowed
+    # even when CORS_ORIGINS is not explicitly overridden in Render's env vars.
     CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://sentriq-rouge.vercel.app",
     ]
 
     # Database configuration (defaults to async SQLite)

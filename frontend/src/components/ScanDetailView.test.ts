@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Scan } from '../types/scan.ts';
 import type { Finding } from '../types/finding.ts';
+import { calculateFindingStatusSummary } from '../utils/findingStatus.ts';
 
 // Simulated state store mimicking ScanDetailView refresh and rescan behaviors
 class ScanDetailViewStateMock {
@@ -17,6 +18,17 @@ class ScanDetailViewStateMock {
 
   constructor(scanId: string) {
     this.currentRouteScanId = scanId;
+  }
+
+  get statusSummary() {
+    return calculateFindingStatusSummary(this.findings);
+  }
+
+  handleStatusChange(updated: Finding) {
+    this.findings = this.findings.map((f) => (f.id === updated.id ? updated : f));
+    if (this.selectedFinding?.id === updated.id) {
+      this.selectedFinding = updated;
+    }
   }
 
   async loadScanData(
@@ -259,3 +271,225 @@ describe('ScanDetailView Refresh Flow', () => {
     assert.equal(view.currentRouteScanId, 'scan-200');
   });
 });
+
+describe('ScanDetailView Finding Status Summary', () => {
+  const sampleScan: Scan = {
+    id: 'scan-300',
+    project_id: 'proj-1',
+    target_url: 'https://security.example.com',
+    status: 'completed',
+    overall_score: 72,
+    score_grade: 'C',
+    findings_count: 4,
+    critical_count: 1,
+    high_count: 1,
+    medium_count: 1,
+    low_count: 1,
+    info_count: 0,
+    created_at: '2026-10-12T10:00:00Z',
+  };
+
+  const sampleFindings: Finding[] = [
+    {
+      id: 'f-101',
+      scan_id: 'scan-300',
+      source: 'web',
+      category: 'tls',
+      title: 'Expired Certificate',
+      description: 'TLS certificate is expired',
+      severity: 'critical',
+      confidence: 1.0,
+      risk_score: 95,
+      status: 'open',
+      created_at: '2026-10-12T10:01:00Z',
+    },
+    {
+      id: 'f-102',
+      scan_id: 'scan-300',
+      source: 'web',
+      category: 'headers',
+      title: 'Missing CSP',
+      description: 'Content-Security-Policy not configured',
+      severity: 'high',
+      confidence: 1.0,
+      risk_score: 75,
+      status: 'in_progress',
+      created_at: '2026-10-12T10:01:00Z',
+    },
+    {
+      id: 'f-103',
+      scan_id: 'scan-300',
+      source: 'web',
+      category: 'cookies',
+      title: 'Missing SameSite Flag',
+      description: 'SameSite not specified on cookie',
+      severity: 'medium',
+      confidence: 0.9,
+      risk_score: 50,
+      status: 'resolved',
+      created_at: '2026-10-12T10:01:00Z',
+    },
+    {
+      id: 'f-104',
+      scan_id: 'scan-300',
+      source: 'web',
+      category: 'info',
+      title: 'Server Banner Disclosed',
+      description: 'nginx version exposed in header',
+      severity: 'low',
+      confidence: 0.8,
+      risk_score: 25,
+      status: 'false_positive',
+      created_at: '2026-10-12T10:01:00Z',
+    },
+  ];
+
+  it('calculates correct aggregate counts for all finding lifecycle statuses on initial load', async () => {
+    const view = new ScanDetailViewStateMock('scan-300');
+    await view.loadScanData(
+      false,
+      async () => sampleScan,
+      async () => sampleFindings
+    );
+
+    const summary = view.statusSummary;
+    assert.equal(summary.total, 4);
+    assert.equal(summary.open, 1);
+    assert.equal(summary.inProgress, 1);
+    assert.equal(summary.resolved, 1);
+    assert.equal(summary.falsePositive, 1);
+
+    // Existing severity counters remain intact and unchanged
+    assert.equal(view.scan?.critical_count, 1);
+    assert.equal(view.scan?.high_count, 1);
+    assert.equal(view.scan?.medium_count, 1);
+    assert.equal(view.scan?.low_count, 1);
+    assert.equal(view.scan?.info_count, 0);
+  });
+
+  it('updates status summary immediately when finding status is changed', async () => {
+    const view = new ScanDetailViewStateMock('scan-300');
+    await view.loadScanData(
+      false,
+      async () => sampleScan,
+      async () => sampleFindings
+    );
+
+    // Initial state: 1 open, 1 in_progress, 1 resolved, 1 false_positive
+    assert.equal(view.statusSummary.open, 1);
+    assert.equal(view.statusSummary.resolved, 1);
+
+    // User marks open finding (f-101) as resolved
+    const resolvedFinding: Finding = {
+      ...sampleFindings[0],
+      status: 'resolved',
+    };
+    view.handleStatusChange(resolvedFinding);
+
+    // Immediately updates without page reload: open becomes 0, resolved becomes 2
+    const updatedSummary = view.statusSummary;
+    assert.equal(updatedSummary.total, 4);
+    assert.equal(updatedSummary.open, 0);
+    assert.equal(updatedSummary.inProgress, 1);
+    assert.equal(updatedSummary.resolved, 2);
+    assert.equal(updatedSummary.falsePositive, 1);
+
+    // Severity counters remain unchanged
+    assert.equal(view.scan?.critical_count, 1);
+  });
+
+  it('maintains correct summary across multiple status transitions', async () => {
+    const view = new ScanDetailViewStateMock('scan-300');
+    await view.loadScanData(
+      false,
+      async () => sampleScan,
+      async () => sampleFindings
+    );
+
+    // Move in_progress finding to false_positive
+    view.handleStatusChange({
+      ...sampleFindings[1],
+      status: 'false_positive',
+    });
+
+    let summary = view.statusSummary;
+    assert.equal(summary.inProgress, 0);
+    assert.equal(summary.falsePositive, 2);
+    assert.equal(summary.total, 4);
+
+    // Move open finding to in_progress
+    view.handleStatusChange({
+      ...sampleFindings[0],
+      status: 'in_progress',
+    });
+
+    summary = view.statusSummary;
+    assert.equal(summary.open, 0);
+    assert.equal(summary.inProgress, 1);
+    assert.equal(summary.resolved, 1);
+    assert.equal(summary.falsePositive, 2);
+    assert.equal(summary.total, 4);
+  });
+
+  it('reload behavior stays correct using backend data as source of truth', async () => {
+    const view = new ScanDetailViewStateMock('scan-300');
+    await view.loadScanData(
+      false,
+      async () => sampleScan,
+      async () => sampleFindings
+    );
+
+    // Backend persisted findings after resolutions made via API
+    const persistedBackendFindings: Finding[] = sampleFindings.map((f) => {
+      if (f.id === 'f-101') return { ...f, status: 'resolved' };
+      if (f.id === 'f-102') return { ...f, status: 'resolved' };
+      return f;
+    });
+
+    // User triggers manual reload/refresh
+    await view.loadScanData(
+      true,
+      async () => sampleScan,
+      async () => persistedBackendFindings
+    );
+
+    const reloadedSummary = view.statusSummary;
+    assert.equal(reloadedSummary.total, 4);
+    assert.equal(reloadedSummary.open, 0);
+    assert.equal(reloadedSummary.inProgress, 0);
+    assert.equal(reloadedSummary.resolved, 3);
+    assert.equal(reloadedSummary.falsePositive, 1);
+    assert.equal(view.refreshError, null);
+  });
+
+  it('handles empty findings correctly with zero for all counts', async () => {
+    const emptyScan: Scan = {
+      ...sampleScan,
+      id: 'scan-clean',
+      findings_count: 0,
+      critical_count: 0,
+      high_count: 0,
+      medium_count: 0,
+      low_count: 0,
+      info_count: 0,
+    };
+
+    const view = new ScanDetailViewStateMock('scan-clean');
+    await view.loadScanData(
+      false,
+      async () => emptyScan,
+      async () => []
+    );
+
+    assert.equal(view.findings.length, 0);
+    const summary = view.statusSummary;
+    assert.deepEqual(summary, {
+      total: 0,
+      open: 0,
+      inProgress: 0,
+      resolved: 0,
+      falsePositive: 0,
+    });
+  });
+});
+

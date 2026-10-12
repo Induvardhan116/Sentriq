@@ -13,7 +13,9 @@ import { Scan } from '../types/scan';
 import { Finding } from '../types/finding';
 import { fetchScan, fetchScanFindings, triggerScan } from '../services/api';
 import { navigate } from '../utils/routing';
+import { calculateFindingStatusSummary } from '../utils/findingStatus';
 import { FindingDetailModal } from './FindingDetailModal';
+import { FindingStatusSummary } from './FindingStatusSummary';
 
 interface ScanDetailViewProps {
   scanId: string;
@@ -48,12 +50,18 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
       if (isFetchingRef.current) return;
       isFetchingRef.current = true;
 
+      const isSameScan = scanRef.current?.id === scanId;
+
       if (isManualRefresh) {
         setIsRefreshing(true);
         setRefreshError(null);
-      } else if (!scanRef.current) {
+      } else if (!scanRef.current || !isSameScan) {
         setLoading(true);
         setLoadError(null);
+        if (!isSameScan) {
+          setScan(null);
+          setFindings([]);
+        }
       }
 
       try {
@@ -181,6 +189,11 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
     if (filterSeverity === 'all') return true;
     return f.severity.toLowerCase() === filterSeverity.toLowerCase();
   });
+
+  const statusSummary = React.useMemo(
+    () => calculateFindingStatusSummary(findings),
+    [findings]
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -369,6 +382,9 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Finding Status Summary */}
+      <FindingStatusSummary summary={statusSummary} />
 
       {/* Findings Section */}
       <div className="surface-card" style={{ gap: '20px' }}>

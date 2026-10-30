@@ -7,6 +7,14 @@ export interface FindingStatusSummaryProps {
 }
 
 export const FindingStatusSummary: React.FC<FindingStatusSummaryProps> = ({ summary }) => {
+  const safeSummary = summary || {
+    total: 0,
+    open: 0,
+    inProgress: 0,
+    resolved: 0,
+    falsePositive: 0,
+  };
+
   return (
     <div
       className="surface-card"
@@ -80,7 +88,7 @@ export const FindingStatusSummary: React.FC<FindingStatusSummaryProps> = ({ summ
               marginTop: '4px',
             }}
           >
-            {summary.total}
+            {safeSummary.total}
           </div>
         </div>
 
@@ -119,7 +127,7 @@ export const FindingStatusSummary: React.FC<FindingStatusSummaryProps> = ({ summ
               marginTop: '4px',
             }}
           >
-            {summary.open}
+            {safeSummary.open}
           </div>
         </div>
 
@@ -158,7 +166,7 @@ export const FindingStatusSummary: React.FC<FindingStatusSummaryProps> = ({ summ
               marginTop: '4px',
             }}
           >
-            {summary.inProgress}
+            {safeSummary.inProgress}
           </div>
         </div>
 
@@ -197,7 +205,7 @@ export const FindingStatusSummary: React.FC<FindingStatusSummaryProps> = ({ summ
               marginTop: '4px',
             }}
           >
-            {summary.resolved}
+            {safeSummary.resolved}
           </div>
         </div>
 
@@ -236,7 +244,7 @@ export const FindingStatusSummary: React.FC<FindingStatusSummaryProps> = ({ summ
               marginTop: '4px',
             }}
           >
-            {summary.falsePositive}
+            {safeSummary.falsePositive}
           </div>
         </div>
       </div>

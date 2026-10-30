@@ -40,6 +40,11 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [isRescanning, setIsRescanning] = useState<boolean>(false);
 
+  const statusSummary = React.useMemo(
+    () => calculateFindingStatusSummary(findings),
+    [findings]
+  );
+
   const isFetchingRef = React.useRef<boolean>(false);
   const scanRef = React.useRef<Scan | null>(null);
   scanRef.current = scan;
@@ -189,11 +194,6 @@ export const ScanDetailView: React.FC<ScanDetailViewProps> = ({
     if (filterSeverity === 'all') return true;
     return f.severity.toLowerCase() === filterSeverity.toLowerCase();
   });
-
-  const statusSummary = React.useMemo(
-    () => calculateFindingStatusSummary(findings),
-    [findings]
-  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>

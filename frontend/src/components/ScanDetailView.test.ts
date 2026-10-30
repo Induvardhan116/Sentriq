@@ -491,5 +491,47 @@ describe('ScanDetailView Finding Status Summary', () => {
       falsePositive: 0,
     });
   });
+
+  it('computes status summary during initial loading state when scan is null to prevent conditional hook errors', () => {
+    const view = new ScanDetailViewStateMock('scan-loading');
+    // Prior to loading completing: scan is null, loading is true, findings is []
+    assert.equal(view.scan, null);
+    assert.equal(view.loading, true);
+    // statusSummary must be safe to compute and available without throwing
+    const summary = view.statusSummary;
+    assert.deepEqual(summary, {
+      total: 0,
+      open: 0,
+      inProgress: 0,
+      resolved: 0,
+      falsePositive: 0,
+    });
+  });
+
+  it('ensures status summary remains available across transition from loading to completed scan without hook drift', async () => {
+    const view = new ScanDetailViewStateMock('scan-lifecycle');
+    // Phase 1: Initial uninitialized / loading render (scan is null, loading is true)
+    assert.equal(view.loading, true);
+    assert.equal(view.scan, null);
+    const initialSummary = view.statusSummary;
+    assert.equal(initialSummary.total, 0);
+
+    // Phase 2: Asynchronous completion transition (scan loaded, findings resolved)
+    await view.loadScanData(
+      false,
+      async () => sampleScan,
+      async () => sampleFindings
+    );
+
+    assert.equal(view.loading, false);
+    assert.notEqual(view.scan, null);
+    const completedSummary = view.statusSummary;
+    assert.equal(completedSummary.total, 4);
+    assert.equal(completedSummary.open, 1);
+    assert.equal(completedSummary.inProgress, 1);
+    assert.equal(completedSummary.resolved, 1);
+    assert.equal(completedSummary.falsePositive, 1);
+  });
 });
+
 

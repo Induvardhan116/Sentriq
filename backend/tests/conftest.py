@@ -5,6 +5,10 @@ import os
 # the module-level `engine` is a local aiosqlite engine instead of the
 # production Supabase PostgreSQL engine.  Production .env is never modified.
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
+os.environ["ALLOW_INTERNAL_TARGETS"] = "false"
+
+from app.config import get_settings
+get_settings.cache_clear()
 
 import pytest
 from typing import AsyncGenerator
@@ -12,13 +16,15 @@ from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.database.session import engine
 from app.models.base import Base
+from app.database.migrations import run_migrations
 
 
 @pytest.fixture(autouse=True)
 async def init_test_db():
-    """Ensure database tables exist for test execution."""
+    """Ensure database tables exist and migrations are applied for test execution."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(run_migrations)
     yield
 
 

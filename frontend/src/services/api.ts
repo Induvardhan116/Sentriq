@@ -1,5 +1,5 @@
 import type { SystemHealth } from '../types/system';
-import type { Project, ProjectCreate } from '../types/project';
+import type { Project, ProjectCreate, ProjectUpdate } from '../types/project';
 import type { Scan, ScanSummary } from '../types/scan';
 import type { Finding, FindingStatus } from '../types/finding';
 
@@ -139,3 +139,33 @@ export async function updateFindingStatus(
   if (!res.ok) throw new Error(`Failed to update finding status: ${res.statusText}`);
   return res.json();
 }
+
+export async function updateProject(
+  projectId: string,
+  payload: ProjectUpdate
+): Promise<Project> {
+  const res = await fetch(apiUrl(`/api/projects/${projectId}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to update project: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteProject(
+  projectId: string
+): Promise<{ success: boolean; message: string; deleted_id?: string }> {
+  const res = await fetch(apiUrl(`/api/projects/${projectId}`), {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to delete project: ${res.statusText}`);
+  }
+  return res.json();
+}
+

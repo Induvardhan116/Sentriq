@@ -9,9 +9,13 @@ import {
   ChevronRight,
   AlertOctagon,
   ScanSearch,
+  Edit3,
+  Trash2,
 } from 'lucide-react';
 import { Project } from '../types/project';
 import { fetchProject, triggerScan } from '../services/api';
+import { EditProjectModal } from './EditProjectModal';
+import { DeleteProjectModal } from './DeleteProjectModal';
 
 interface ProjectDetailViewProps {
   projectId: string;
@@ -30,6 +34,8 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isTriggering, setIsTriggering] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const loadProjectData = useCallback(async () => {
     setLoadError(null);
@@ -133,6 +139,31 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
           >
             <Play size={13} style={{ fill: 'currentColor' }} />
             <span>{isTriggering ? 'Starting...' : 'Scan Now'}</span>
+          </button>
+
+          <button
+            className="btn-secondary"
+            onClick={() => setIsEditModalOpen(true)}
+            title="Edit project name or target URL"
+            style={{ padding: '6px 12px', fontSize: '0.82rem' }}
+          >
+            <Edit3 size={13} />
+            <span>Edit</span>
+          </button>
+
+          <button
+            className="btn-secondary"
+            onClick={() => setIsDeleteModalOpen(true)}
+            title="Delete project and scan history"
+            style={{
+              padding: '6px 12px',
+              fontSize: '0.82rem',
+              color: 'var(--accent-rose)',
+              borderColor: 'rgba(244, 63, 94, 0.3)',
+            }}
+          >
+            <Trash2 size={13} />
+            <span>Delete</span>
           </button>
 
           <button
@@ -308,6 +339,27 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
           </div>
         )}
       </div>
+
+      <EditProjectModal
+        project={project}
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onProjectUpdated={(updated) => {
+          setProject((prev) => (prev ? { ...prev, ...updated } : updated));
+          onProjectUpdated();
+        }}
+      />
+
+      <DeleteProjectModal
+        project={project}
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onProjectDeleted={() => {
+          onProjectUpdated();
+          onBack();
+        }}
+      />
     </div>
   );
 };
+

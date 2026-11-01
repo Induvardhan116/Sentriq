@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database.session import engine, ping_database
 from app.models.base import Base
+from app.database.migrations import run_migrations
 from app.api.router import api_router
 
 logger = logging.getLogger("sentriq")
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
     # Initialize tables (safe idempotent creation)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(run_migrations)
 
     # Check connection
     db_ok = await ping_database()

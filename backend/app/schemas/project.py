@@ -25,6 +25,15 @@ class ProjectCreate(BaseModel):
         return v
 
 
+class ProjectUpdate(BaseModel):
+    """Payload to update an existing security assessment project."""
+
+    name: Optional[str] = Field(None, min_length=2, max_length=255, description="Updated project name")
+    target_url: Optional[str] = Field(
+        None, min_length=4, max_length=1024, description="Updated target website URL (e.g. https://example.com)"
+    )
+
+
 class ProjectResponse(BaseModel):
     """Project representation with latest scan preview."""
 

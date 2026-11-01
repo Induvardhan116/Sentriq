@@ -7,9 +7,16 @@ import {
   ShieldCheck,
   ChevronRight,
   RefreshCw,
+  Edit3,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  X,
 } from 'lucide-react';
 import { Project } from '../types/project';
 import { triggerScan } from '../services/api';
+import { EditProjectModal } from './EditProjectModal';
+import { DeleteProjectModal } from './DeleteProjectModal';
 
 interface ProjectListProps {
   projects: Project[];
@@ -29,6 +36,16 @@ export const ProjectList: React.FC<ProjectListProps> = ({
   onProjectUpdated,
 }) => {
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error', message: string) => {
+    setToast({ type, message });
+    setTimeout(() => {
+      setToast((current) => (current?.message === message ? null : current));
+    }, 6000);
+  };
 
   const handleStartScan = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -39,6 +56,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
       onSelectScan(scan.id);
     } catch (err) {
       console.error('Failed to trigger scan:', err);
+      showToast('error', err instanceof Error ? err.message : 'Failed to trigger scan.');
     } finally {
       setTriggeringId(null);
     }
@@ -62,7 +80,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px' }}>
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
             Security Assessment Projects
@@ -77,6 +95,47 @@ export const ProjectList: React.FC<ProjectListProps> = ({
           <span>New Project</span>
         </button>
       </div>
+
+      {toast && (
+        <div
+          style={{
+            padding: '12px 16px',
+            borderRadius: '8px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            backgroundColor:
+              toast.type === 'success' ? 'var(--accent-emerald-subtle)' : 'var(--accent-rose-subtle)',
+            border: `1px solid ${
+              toast.type === 'success' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(244, 63, 94, 0.35)'
+            }`,
+            color: toast.type === 'success' ? 'var(--accent-emerald)' : 'var(--accent-rose)',
+            fontSize: '0.85rem',
+            animation: 'fadeIn 0.2s ease',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {toast.type === 'success' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+            <span>{toast.message}</span>
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'inherit',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            title="Dismiss message"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       {loading && projects.length === 0 ? (
         <div className="surface-card" style={{ padding: '40px', textAlign: 'center' }}>
@@ -116,13 +175,13 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                 }}
                 style={{ cursor: 'pointer', padding: '18px 22px' }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div className="brand-logo-badge">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '240px' }}>
+                    <div className="brand-logo-badge" style={{ flexShrink: 0 }}>
                       <Globe size={18} />
                     </div>
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 700, fontSize: '0.96rem', color: '#fff' }}>
                           {project.name}
                         </span>
@@ -136,7 +195,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                     {getScoreBadge(latestScan?.overall_score)}
 
                     {latestScan && (
@@ -152,9 +211,43 @@ export const ProjectList: React.FC<ProjectListProps> = ({
                       disabled={isTriggering}
                       style={{ padding: '6px 12px', fontSize: '0.78rem' }}
                       title="Run new safe assessment"
+                      aria-label={`Run new safe scan on ${project.name}`}
                     >
                       <Play size={13} style={{ fill: 'currentColor' }} />
                       <span>{isTriggering ? 'Starting...' : 'Scan Now'}</span>
+                    </button>
+
+                    <button
+                      className="btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingProject(project);
+                      }}
+                      style={{ padding: '6px 10px', fontSize: '0.78rem' }}
+                      title="Edit project name or target URL"
+                      aria-label={`Edit ${project.name}`}
+                    >
+                      <Edit3 size={13} />
+                      <span>Edit</span>
+                    </button>
+
+                    <button
+                      className="btn-secondary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeletingProject(project);
+                      }}
+                      style={{
+                        padding: '6px 10px',
+                        fontSize: '0.78rem',
+                        color: 'var(--accent-rose)',
+                        borderColor: 'rgba(244, 63, 94, 0.3)',
+                      }}
+                      title="Delete project and scan history"
+                      aria-label={`Delete ${project.name}`}
+                    >
+                      <Trash2 size={13} />
+                      <span>Delete</span>
                     </button>
 
                     {latestScan && <ChevronRight size={16} color="var(--text-muted)" />}
@@ -165,6 +258,28 @@ export const ProjectList: React.FC<ProjectListProps> = ({
           })}
         </div>
       )}
+
+      {/* Edit Project Dialog */}
+      <EditProjectModal
+        project={editingProject}
+        isOpen={editingProject !== null}
+        onClose={() => setEditingProject(null)}
+        onProjectUpdated={(updatedProject) => {
+          onProjectUpdated();
+          showToast('success', `Project "${updatedProject.name}" was updated successfully.`);
+        }}
+      />
+
+      {/* Delete Project Confirmation Dialog */}
+      <DeleteProjectModal
+        project={deletingProject}
+        isOpen={deletingProject !== null}
+        onClose={() => setDeletingProject(null)}
+        onProjectDeleted={(_deletedId, projectName) => {
+          onProjectUpdated();
+          showToast('success', `Project "${projectName}" and associated scan history were permanently deleted.`);
+        }}
+      />
     </div>
   );
 };

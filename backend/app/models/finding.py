@@ -33,6 +33,9 @@ class Finding(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(
         String(32), default="open", nullable=False, index=True
     )  # open, in_progress, resolved, false_positive
+    fingerprint: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, index=True
+    )
 
     # Relationship
     scan: Mapped["Scan"] = relationship("Scan", back_populates="findings")

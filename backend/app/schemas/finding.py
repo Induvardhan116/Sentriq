@@ -28,6 +28,7 @@ class FindingResponse(BaseModel):
     evidence: Optional[str] = None
     remediation: Optional[str] = None
     status: str
+    fingerprint: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

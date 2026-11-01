@@ -16,3 +16,9 @@ export interface ProjectCreate {
   target_url: string;
   authorization_confirmed: boolean;
 }
+
+export interface ProjectUpdate {
+  name?: string;
+  target_url?: string;
+}
+

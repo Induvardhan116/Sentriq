@@ -5,7 +5,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.database.session import engine, ping_database
 from app.models.base import Base
+import asyncio
 from app.database.migrations import run_migrations
+from app.security.rate_limiter import periodic_login_attempts_cleanup
 from app.api.router import api_router
 
 logger = logging.getLogger("sentriq")
@@ -22,9 +24,8 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager initializing database tables and closing connections."""
     logger.info("Initializing Sentriq application [%s]", settings.ENVIRONMENT)
 
-    # Initialize tables (safe idempotent creation)
+    # Initialize tables and run migrations (safe idempotent creation)
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(run_migrations)
 
     # Check connection
@@ -34,9 +35,18 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Database connection failed or degraded.")
 
+    # Start scheduled background maintenance for rate-limiting audit log retention (1h interval)
+    cleanup_task = asyncio.create_task(periodic_login_attempts_cleanup(interval_seconds=3600))
+
     yield
 
-    # Clean shutdown
+    # Clean shutdown: cancel background maintenance worker
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
+
     logger.info("Disposing database connections.")
     await engine.dispose()
 

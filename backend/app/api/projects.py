@@ -1,23 +1,31 @@
 import asyncio
 import datetime
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.database.session import get_db, AsyncSessionLocal
 from app.models.project import Project
 from app.models.scan import Scan
 from app.models.finding import Finding
+from app.models.user import User
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectDetailResponse
 from app.schemas.scan import ScanResponse
 from app.scanners.web.validator import validate_target_url
 from app.scanners.web.scanner import WebsiteScanner
 from app.risk.fingerprint import compute_finding_fingerprint
+from app.security.deps import (
+    get_authenticated_user_or_dev_mode,
+    verify_project_access,
+    require_csrf_if_auth_enabled,
+)
 
 logger = logging.getLogger("sentriq.api.projects")
 router = APIRouter(prefix="/projects", tags=["Projects"])
+settings = get_settings()
 
 
 async def run_scan_background(scan_id: str, target_url: str):
@@ -134,8 +142,13 @@ async def run_scan_background(scan_id: str, target_url: str):
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
-async def create_project(payload: ProjectCreate, db: AsyncSession = Depends(get_db)):
-    """Create a new authorized security target project."""
+async def create_project(
+    payload: ProjectCreate,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    _csrf: None = Depends(require_csrf_if_auth_enabled),
+):
+    """Create a new authorized security target project assigned to current user."""
     is_valid, error, normalized_url = validate_target_url(payload.target_url)
     if not is_valid or not normalized_url:
         raise HTTPException(
@@ -147,6 +160,7 @@ async def create_project(payload: ProjectCreate, db: AsyncSession = Depends(get_
         name=payload.name.strip(),
         target_url=normalized_url,
         authorization_confirmed=payload.authorization_confirmed,
+        owner_id=user.id if user else None,
     )
     db.add(project)
     await db.commit()
@@ -157,6 +171,7 @@ async def create_project(payload: ProjectCreate, db: AsyncSession = Depends(get_
         name=project.name,
         target_url=project.target_url,
         authorization_confirmed=project.authorization_confirmed,
+        owner_id=project.owner_id,
         latest_scan=None,
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -164,9 +179,20 @@ async def create_project(payload: ProjectCreate, db: AsyncSession = Depends(get_
 
 
 @router.get("", response_model=List[ProjectResponse])
-async def list_projects(db: AsyncSession = Depends(get_db)):
-    """List all projects with their latest scan summary."""
-    stmt = select(Project).order_by(Project.created_at.desc())
+async def list_projects(
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+):
+    """List projects accessible to the current user (or all projects if superuser/dev mode)."""
+    if settings.AUTH_ENABLED:
+        if user and user.is_superuser:
+            stmt = select(Project).order_by(Project.created_at.desc())
+        else:
+            user_id = user.id if user else None
+            stmt = select(Project).where(Project.owner_id == user_id).order_by(Project.created_at.desc())
+    else:
+        stmt = select(Project).order_by(Project.created_at.desc())
+
     result = await db.execute(stmt)
     projects = result.scalars().all()
 
@@ -180,6 +206,7 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
                 name=p.name,
                 target_url=p.target_url,
                 authorization_confirmed=p.authorization_confirmed,
+                owner_id=p.owner_id,
                 latest_scan=latest_scan_schema,
                 created_at=p.created_at,
                 updated_at=p.updated_at,
@@ -190,17 +217,17 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{project_id}", response_model=ProjectDetailResponse)
-async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
-    """Retrieve detailed project information and scan history."""
+async def get_project(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+):
+    """Retrieve detailed project information and scan history with strict ownership check."""
     stmt = select(Project).where(Project.id == project_id)
     result = await db.execute(stmt)
     project = result.scalar_one_or_none()
 
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with ID '{project_id}' does not exist.",
-        )
+    verify_project_access(project, user, project_id)
 
     latest = project.scans[0] if project.scans else None
     latest_scan_schema = ScanResponse.model_validate(latest) if latest else None
@@ -211,6 +238,7 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
         name=project.name,
         target_url=project.target_url,
         authorization_confirmed=project.authorization_confirmed,
+        owner_id=project.owner_id,
         latest_scan=latest_scan_schema,
         scans=scans_schemas,
         created_at=project.created_at,
@@ -219,17 +247,18 @@ async def get_project(project_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{project_id}/scans", response_model=ScanResponse, status_code=status.HTTP_202_ACCEPTED)
-async def trigger_project_scan(project_id: str, db: AsyncSession = Depends(get_db)):
+async def trigger_project_scan(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    _csrf: None = Depends(require_csrf_if_auth_enabled),
+):
     """Initiate a safe, non-destructive security scan against an authorized project target."""
     stmt = select(Project).where(Project.id == project_id)
     result = await db.execute(stmt)
     project = result.scalar_one_or_none()
 
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with ID '{project_id}' does not exist.",
-        )
+    verify_project_access(project, user, project_id)
 
     if not project.authorization_confirmed:
         raise HTTPException(
@@ -253,23 +282,98 @@ async def trigger_project_scan(project_id: str, db: AsyncSession = Depends(get_d
     return scan
 
 
+@router.post("/{project_id}/claim", response_model=ProjectResponse)
+async def claim_project(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    _csrf: None = Depends(require_csrf_if_auth_enabled),
+):
+    """Atomically claim an unassigned legacy project (owner_id IS NULL).
+
+    Guarantees:
+    1. Atomic conditional update: simultaneous race claims cannot succeed for multiple users.
+    2. Only projects with owner_id IS NULL can be claimed.
+    3. Preserves all existing project, scan, and finding history.
+    """
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required to claim a project.",
+            headers={"WWW-Authenticate": "Cookie"},
+        )
+
+    claim_stmt = (
+        update(Project)
+        .where(
+            Project.id == project_id,
+            Project.owner_id.is_(None),
+        )
+        .values(
+            owner_id=user.id,
+            updated_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    result = await db.execute(claim_stmt)
+    await db.commit()
+
+    if result.rowcount == 1:
+        stmt = select(Project).where(Project.id == project_id)
+        res = await db.execute(stmt)
+        project = res.scalar_one()
+        latest = project.scans[0] if project.scans else None
+        latest_scan_schema = ScanResponse.model_validate(latest) if latest else None
+        return ProjectResponse(
+            id=project.id,
+            name=project.name,
+            target_url=project.target_url,
+            authorization_confirmed=project.authorization_confirmed,
+            owner_id=project.owner_id,
+            latest_scan=latest_scan_schema,
+            created_at=project.created_at,
+            updated_at=project.updated_at,
+        )
+
+    # If not updated, check reason with strict information-leakage prevention
+    check_stmt = select(Project).where(Project.id == project_id)
+    check_res = await db.execute(check_stmt)
+    project = check_res.scalar_one_or_none()
+
+    if not project or (project.owner_id is not None and project.owner_id != user.id):
+        # Information leakage defense: Return generic 404 so unauthorized users cannot
+        # determine whether a project ID belongs to another tenant.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project with ID '{project_id}' does not exist.",
+        )
+
+    if project.owner_id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project is already claimed by you.",
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Project with ID '{project_id}' does not exist.",
+    )
+
+
 @router.patch("/{project_id}", response_model=ProjectResponse)
 @router.put("/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_id: str,
     payload: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    _csrf: None = Depends(require_csrf_if_auth_enabled),
 ):
     """Update project name and/or target website URL with strict SSRF validation."""
     stmt = select(Project).where(Project.id == project_id)
     result = await db.execute(stmt)
     project = result.scalar_one_or_none()
 
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with ID '{project_id}' does not exist.",
-        )
+    verify_project_access(project, user, project_id)
 
     if payload.name is not None:
         clean_name = payload.name.strip()
@@ -301,6 +405,7 @@ async def update_project(
         name=project.name,
         target_url=project.target_url,
         authorization_confirmed=project.authorization_confirmed,
+        owner_id=project.owner_id,
         latest_scan=latest_scan_schema,
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -308,17 +413,18 @@ async def update_project(
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_200_OK)
-async def delete_project(project_id: str, db: AsyncSession = Depends(get_db)):
+async def delete_project(
+    project_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    _csrf: None = Depends(require_csrf_if_auth_enabled),
+):
     """Safely delete a project and all associated scans and findings within a database transaction."""
     stmt = select(Project).where(Project.id == project_id)
     result = await db.execute(stmt)
     project = result.scalar_one_or_none()
 
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project with ID '{project_id}' does not exist.",
-        )
+    verify_project_access(project, user, project_id)
 
     project_name = project.name
 

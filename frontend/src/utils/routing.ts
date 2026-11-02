@@ -3,6 +3,8 @@ export type AppRoute =
   | { view: 'projects' }
   | { view: 'project'; projectId: string }
   | { view: 'scan'; scanId: string; findingId?: string }
+  | { view: 'login' }
+  | { view: 'register' }
   | { view: 'error'; message: string; submessage?: string };
 
 /**
@@ -36,6 +38,14 @@ export function parseRoute(
   }
 
   const first = segments[0].toLowerCase();
+
+  if (first === 'login') {
+    return { view: 'login' };
+  }
+
+  if (first === 'register' || first === 'signup') {
+    return { view: 'register' };
+  }
 
   if (first === 'overview' || first === 'dashboard') {
     return { view: 'overview' };
@@ -112,6 +122,10 @@ export function routeToHash(route: AppRoute): string {
       return route.findingId
         ? `#/scan/${encodeURIComponent(route.scanId)}?finding=${encodeURIComponent(route.findingId)}`
         : `#/scan/${encodeURIComponent(route.scanId)}`;
+    case 'login':
+      return '#/login';
+    case 'register':
+      return '#/register';
     case 'error':
       return typeof window !== 'undefined' && window.location.hash
         ? window.location.hash

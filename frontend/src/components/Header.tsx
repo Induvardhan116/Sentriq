@@ -1,6 +1,7 @@
 import React from 'react';
 import { Shield, Activity, RefreshCw } from 'lucide-react';
 import { SystemHealth } from '../types/system';
+import { UserProfileMenu } from './UserProfileMenu';
 
 interface HeaderProps {
   health: SystemHealth | null;
@@ -63,6 +64,8 @@ export const Header: React.FC<HeaderProps> = ({ health, loading, onRefresh }) =>
           />
           <span>Check</span>
         </button>
+
+        <UserProfileMenu />
       </div>
     </header>
   );

@@ -5,6 +5,7 @@ export interface Project {
   name: string;
   target_url: string;
   authorization_confirmed: boolean;
+  owner_id?: string | null;
   latest_scan?: Scan | null;
   scans?: Scan[];
   created_at: string;

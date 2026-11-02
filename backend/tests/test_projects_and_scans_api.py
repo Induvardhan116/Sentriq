@@ -1,6 +1,22 @@
+import uuid
 from unittest.mock import patch
 import pytest
 from httpx import AsyncClient
+
+
+@pytest.fixture(autouse=True)
+async def setup_auth_user(async_client: AsyncClient):
+    """Authenticate client with a valid session and anti-CSRF token for scanner regression tests."""
+    unique_email = f"project_tester_{uuid.uuid4().hex[:8]}@sentriq.io"
+    reg_resp = await async_client.post(
+        "/api/auth/register",
+        json={"email": unique_email, "password": "TestPassword123!", "full_name": "Project Tester"},
+        headers={"Origin": "http://localhost:5173"},
+    )
+    if reg_resp.status_code == 201:
+        csrf_token = reg_resp.json().get("csrf_token")
+        async_client.headers.update({"Origin": "http://localhost:5173", "X-CSRF-Token": csrf_token})
+    yield
 
 
 @pytest.mark.asyncio

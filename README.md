@@ -139,11 +139,26 @@ npm run dev     # Starts dev server on port 5173
 
 ---
 
+## Phase 3.3 Security Hardening & Architecture Policy
+
+Sentriq incorporates defense-in-depth controls adhering strictly to OWASP guidelines:
+
+1. **GitHub OAuth Replay Protection**: Server-side one-time state consumption (`OAuthState` model) with cryptographic SHA-256 state hashing and atomic SQL updates. Expired, tampered, already-used, and concurrent replay attempts are strictly rejected.
+2. **Safer Login Rate Limiting**: Eliminated 24-hour account lockout behavior to prevent Denial-of-Service (DoS) abuse. Implemented progressive temporary throttling with bounded limits, generic error messaging, and dummy Argon2id password verification for non-existent users.
+3. **Session Lifecycle & Rotation**: Per-client session rotation on login revokes previous tokens on the same device while preserving unrelated sessions on other devices. Strict rejection of expired and revoked sessions.
+4. **Production Architecture**: Production authentication is gated until unified same-site or same-origin domain routing is configured. Cookie flags (`SameSite=Lax`, `HttpOnly`, `Secure`) and anti-CSRF protections are strictly preserved without cross-site compromises. See [Production Auth Architecture](docs/architecture/production_auth.md) for full deployment details.
+
+---
+
 ## Incremental Roadmap
 
 - [x] **Phase 1: Project Foundation** — FastAPI backend, React/Vite/TS frontend, SQLite/PostgreSQL async engine, canonical health endpoint.
 - [x] **Phase 2: Website Security Scanner** — Authorized targets, non-destructive checks (HTTPS/TLS, headers, cookies, CORS, exposure), finding normalization & risk engine.
-- [ ] **Phase 3: Authentication & GitHub OAuth** — User accounts, sessions, multi-tenant isolation.
+- [ ] **Phase 3: Authentication & GitHub OAuth**
+  - [x] Phase 3.1: Security Core & Cryptographic Primitives
+  - [x] Phase 3.2: Database Persistence & User Models
+  - [x] Phase 3.3: Authentication APIs & Security Hardening
+  - [ ] Phase 3.4: Multi-Tenant Project Isolation (Upcoming)
 - [ ] **Phase 4: Finding Normalization Hub** — Universal finding management.
 - [ ] **Phase 5: Advanced Risk Correlation** — Multi-dimensional asset weighting and posture tracking.
 - [ ] **Phase 6: Repository Security Analysis** — Semgrep CE, Gitleaks, OSV.dev dependency scanning.
@@ -151,3 +166,4 @@ npm run dev     # Starts dev server on port 5173
 - [ ] **Phase 8: AI Security Analyst** — Evidence-grounded explanations with deterministic fallback.
 - [ ] **Phase 9: PDF Security Reporting** — Open-source report generation.
 - [ ] **Phase 10: Production Deployment** — Vercel + Render + Supabase.
+

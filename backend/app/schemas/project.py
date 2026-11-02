@@ -41,6 +41,7 @@ class ProjectResponse(BaseModel):
     name: str
     target_url: str
     authorization_confirmed: bool
+    owner_id: Optional[str] = None
     latest_scan: Optional[ScanResponse] = None
     created_at: datetime
     updated_at: datetime

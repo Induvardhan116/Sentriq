@@ -8,12 +8,16 @@ import { ProjectList } from './components/ProjectList';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { ScanDetailView } from './components/ScanDetailView';
 import { ProjectDetailView } from './components/ProjectDetailView';
+import { LoginPage } from './components/LoginPage';
+import { RegisterPage } from './components/RegisterPage';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { fetchSystemHealth, fetchProjects } from './services/api';
 import { SystemHealth } from './types/system';
 import { Project } from './types/project';
 import { AppRoute, parseRoute, navigate } from './utils/routing';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  useAuth();
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [latencyMs, setLatencyMs] = useState<number>(0);
@@ -63,6 +67,15 @@ export const App: React.FC = () => {
     loadHealth();
     loadProjects();
   }, [loadHealth, loadProjects]);
+
+  // Handle dedicated full-screen auth routes
+  if (route.view === 'login') {
+    return <LoginPage />;
+  }
+
+  if (route.view === 'register') {
+    return <RegisterPage />;
+  }
 
   // Determine active sidebar tab
   const currentTab: 'overview' | 'projects' =
@@ -131,7 +144,7 @@ export const App: React.FC = () => {
                 </div>
                 <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
                   <span className="badge badge-cyan" style={{ fontSize: '0.78rem' }}>
-                    PHASE 2 ACTIVE
+                    PHASE 3.3 ACTIVE
                   </span>
                   <button
                     className="btn-primary"
@@ -175,6 +188,14 @@ export const App: React.FC = () => {
         }}
       />
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 };
 

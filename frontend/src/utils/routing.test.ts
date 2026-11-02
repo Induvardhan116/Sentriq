@@ -87,6 +87,13 @@ describe('Routing Helper: parseRoute', () => {
       findingId: undefined,
     });
   });
+
+  it('parses authentication routes (login and register)', () => {
+    assert.deepEqual(parseRoute('#/login'), { view: 'login' });
+    assert.deepEqual(parseRoute('#/login/'), { view: 'login' });
+    assert.deepEqual(parseRoute('#/register'), { view: 'register' });
+    assert.deepEqual(parseRoute('#/signup'), { view: 'register' });
+  });
 });
 
 describe('Routing Helper: routeToHash', () => {
@@ -108,5 +115,10 @@ describe('Routing Helper: routeToHash', () => {
       routeToHash({ view: 'scan', scanId: 's-1', findingId: 'f-1' }),
       '#/scan/s-1?finding=f-1'
     );
+  });
+
+  it('formats auth views', () => {
+    assert.equal(routeToHash({ view: 'login' }), '#/login');
+    assert.equal(routeToHash({ view: 'register' }), '#/register');
   });
 });

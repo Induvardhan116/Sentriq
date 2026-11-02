@@ -26,6 +26,11 @@ async def init_test_db():
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(run_migrations)
     yield
+    # Clean up table rows after each test to isolate test states
+    async with engine.begin() as conn:
+        for table in reversed(Base.metadata.sorted_tables):
+            await conn.execute(table.delete())
+
 
 
 @pytest.fixture

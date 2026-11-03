@@ -46,6 +46,8 @@ from app.models.finding_status_event import (
 from app.database.session import AsyncSessionLocal
 from app.database.migrations import (
     run_migrations,
+    PG_TRIGGER_AUDIT_DROP,
+    PG_TRIGGER_AUDIT_CREATE,
     PG_TRIGGER_AUDIT_NO_DELETE,
     PG_FUNCTION_AUDIT_PROTECT_UPDATE,
     PG_TRIGGER_AUDIT_PROTECT_UPDATE,
@@ -610,6 +612,8 @@ def test_postgresql_ddl_and_triggers_compilation():
     # Ensure PostgreSQL trigger scripts are non-empty and well-formed
     assert "CREATE OR REPLACE FUNCTION" in PG_FUNCTION_AUDIT_PROTECT_UPDATE
     assert "DELETE operations are prohibited" in PG_FUNCTION_AUDIT_PROTECT_UPDATE
+    assert "DROP TRIGGER IF EXISTS trg_audit_events_immutable" in PG_TRIGGER_AUDIT_DROP
+    assert "CREATE TRIGGER trg_audit_events_immutable" in PG_TRIGGER_AUDIT_CREATE
     assert "EXECUTE FUNCTION trg_enforce_audit_immutability()" in PG_TRIGGER_AUDIT_NO_DELETE
     assert "SECURITY DEFINER" in PG_FUNCTION_ANONYMIZE_USER
     assert "SET search_path = public, pg_temp" in PG_FUNCTION_ANONYMIZE_USER

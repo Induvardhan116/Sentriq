@@ -1,10 +1,12 @@
 import uuid
+import re
 import sqlite3
 from datetime import datetime, timezone, timedelta
+from unittest.mock import MagicMock, patch
 import pytest
 from sqlalchemy import create_engine, inspect, text, select
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
@@ -14,7 +16,13 @@ from app.models.user import User, OAuthAccount, UserSession, LoginAttempt, OAuth
 from app.models.project import Project
 from app.models.scan import Scan
 from app.models.finding import Finding
-from app.database.migrations import run_migrations
+from app.database.migrations import (
+    run_migrations,
+    PG_TRIGGER_AUDIT_DROP,
+    PG_TRIGGER_AUDIT_CREATE,
+    PG_TRIGGER_AUDIT_NO_DELETE,
+    PG_TRIGGER_AUDIT_PROTECT_UPDATE,
+)
 
 
 
@@ -647,6 +655,91 @@ def test_startup_migration_path_executes_explicit_oauth_states_migration(tmp_pat
         # Verify existing data still preserved
         user_rows = conn.execute(text("SELECT email FROM users WHERE id = 'u-1'")).fetchall()
         assert len(user_rows) == 1
+
+
+def _extract_commands_from_sql(sql_str: str) -> list[str]:
+    """Parse top-level SQL commands, ignoring semicolons within comments, strings, and dollar-quoted bodies."""
+    clean = re.sub(r"--.*$", "", sql_str, flags=re.MULTILINE)
+    clean = re.sub(r"\$\$.*?\$\$", "'DO_OR_FUNCTION_BODY'", clean, flags=re.DOTALL)
+    clean = re.sub(r"'(?:''|[^'])*'", "'STRING'", clean)
+    return [c.strip() for c in clean.split(";") if c.strip()]
+
+
+def test_postgresql_migration_statements_are_individual_prepared_commands():
+    """Regression test: verify all PostgreSQL migration statements are single prepared commands.
+
+    Prevents 'sqlalchemy.exc.ProgrammingError: cannot insert multiple commands into a prepared statement'
+    under PostgreSQL asyncpg during application startup and migrations.
+    """
+    mock_conn = MagicMock()
+    mock_conn.dialect.name = "postgresql"
+
+    executed_statements = []
+
+    def record_and_validate(stmt, *args, **kwargs):
+        sql_str = str(getattr(stmt, "text", stmt))
+        executed_statements.append(sql_str)
+
+        # Detect multiple commands outside function/procedure/DO block bodies
+        commands = _extract_commands_from_sql(sql_str)
+        if len(commands) > 1:
+            raise ProgrammingError(
+                statement=sql_str,
+                params={},
+                orig=Exception("cannot insert multiple commands into a prepared statement"),
+            )
+        return MagicMock()
+
+    mock_conn.execute.side_effect = record_and_validate
+
+    with patch("app.database.migrations.Base.metadata.create_all"), \
+         patch("app.database.migrations.inspect") as mock_inspect:
+        mock_inspector = MagicMock()
+        mock_inspect.return_value = mock_inspector
+        mock_inspector.get_table_names.return_value = ["findings", "projects", "oauth_states", "finding_status_events"]
+        mock_inspector.get_columns.return_value = [{"name": "id"}, {"name": "risk_score"}]
+
+        # Must execute cleanly without raising ProgrammingError
+        run_migrations(mock_conn)
+
+    assert len(executed_statements) > 0
+
+    # Verify every executed statement is a single prepared command
+    for stmt in executed_statements:
+        cmds = _extract_commands_from_sql(stmt)
+        assert len(cmds) <= 1, f"Statement contains multiple commands: {stmt}"
+
+    # Verify DROP TRIGGER and CREATE TRIGGER are separate and sequentially ordered
+    drop_indices = [
+        i for i, s in enumerate(executed_statements)
+        if "DROP TRIGGER IF EXISTS trg_audit_events_immutable" in s
+    ]
+    create_indices = [
+        i for i, s in enumerate(executed_statements)
+        if "CREATE TRIGGER trg_audit_events_immutable" in s
+    ]
+
+    assert len(drop_indices) == 1, "Expected exactly 1 DROP TRIGGER call"
+    assert len(create_indices) == 1, "Expected exactly 1 CREATE TRIGGER call"
+    assert drop_indices[0] < create_indices[0], "DROP TRIGGER must execute before CREATE TRIGGER"
+
+    drop_stmt = executed_statements[drop_indices[0]]
+    create_stmt = executed_statements[create_indices[0]]
+    assert "CREATE TRIGGER" not in drop_stmt, "DROP TRIGGER must not contain CREATE TRIGGER"
+    assert "DROP TRIGGER" not in create_stmt, "CREATE TRIGGER must not contain DROP TRIGGER"
+
+    # Verify that multi-command SQL would fail under the exact asyncpg error
+    failing_sql = """
+    DROP TRIGGER IF EXISTS trg_audit_events_immutable ON finding_status_events;
+    CREATE TRIGGER trg_audit_events_immutable
+    BEFORE UPDATE OR DELETE ON finding_status_events
+    FOR EACH ROW
+    EXECUTE FUNCTION trg_enforce_audit_immutability();
+    """
+    with pytest.raises(ProgrammingError) as exc_info:
+        record_and_validate(failing_sql)
+    assert "cannot insert multiple commands into a prepared statement" in str(exc_info.value)
+
 
 
 

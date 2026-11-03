@@ -93,15 +93,20 @@ END;
 $$;
 """
 
-PG_TRIGGER_AUDIT_NO_DELETE = """
+PG_TRIGGER_AUDIT_DROP = """
 DROP TRIGGER IF EXISTS trg_audit_events_immutable ON finding_status_events;
+"""
+
+PG_TRIGGER_AUDIT_CREATE = """
 CREATE TRIGGER trg_audit_events_immutable
 BEFORE UPDATE OR DELETE ON finding_status_events
 FOR EACH ROW
 EXECUTE FUNCTION trg_enforce_audit_immutability();
 """
 
-PG_TRIGGER_AUDIT_PROTECT_UPDATE = PG_TRIGGER_AUDIT_NO_DELETE
+# Backward compatibility aliases
+PG_TRIGGER_AUDIT_NO_DELETE = PG_TRIGGER_AUDIT_CREATE
+PG_TRIGGER_AUDIT_PROTECT_UPDATE = PG_TRIGGER_AUDIT_CREATE
 
 PG_FUNCTION_ANONYMIZE_USER = """
 CREATE OR REPLACE PROCEDURE sp_anonymize_user(
@@ -377,7 +382,8 @@ def run_migrations(connection) -> None:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
         connection.execute(text(PG_FUNCTION_CONSTANT_TIME_BYTES_EQ))
         connection.execute(text(PG_FUNCTION_AUDIT_PROTECT_UPDATE))
-        connection.execute(text(PG_TRIGGER_AUDIT_PROTECT_UPDATE))
+        connection.execute(text(PG_TRIGGER_AUDIT_DROP.strip()))
+        connection.execute(text(PG_TRIGGER_AUDIT_CREATE.strip()))
         connection.execute(text("""
             CREATE TABLE IF NOT EXISTS sentriq_internal_secrets (
                 key_name VARCHAR(64) PRIMARY KEY,

@@ -1,7 +1,14 @@
 import type { SystemHealth } from '../types/system';
 import type { Project, ProjectCreate, ProjectUpdate } from '../types/project';
 import type { Scan, ScanSummary } from '../types/scan';
-import type { Finding, FindingStatus } from '../types/finding';
+import type {
+  Finding,
+  FindingStatus,
+  FindingStatusEvent,
+  PaginatedFindingsResponse,
+  FindingsSummaryResponse,
+  FindingFilterParams,
+} from '../types/finding';
 import type { User, LoginPayload, RegisterPayload, ProfileUpdatePayload, AuthResponse } from '../types/auth';
 
 /**
@@ -263,14 +270,79 @@ export async function fetchScanSummary(scanId: string): Promise<ScanSummary> {
 
 export async function updateFindingStatus(
   findingId: string,
-  status: FindingStatus
+  status: FindingStatus,
+  justification?: string | null,
+  expectedVersion?: number | null
 ): Promise<Finding> {
+  const payload: { status: FindingStatus; justification?: string | null; expected_version?: number | null } = { status };
+  if (justification !== undefined) payload.justification = justification;
+  if (expectedVersion !== undefined) payload.expected_version = expectedVersion;
+
   const res = await secureFetch(apiUrl(`/api/findings/${findingId}`), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Failed to update finding status: ${res.statusText}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail?.message || err.detail || `Failed to update finding status: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchFindingHistory(findingId: string): Promise<FindingStatusEvent[]> {
+  const res = await secureFetch(apiUrl(`/api/findings/${findingId}/history`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch finding history: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchFindings(params?: FindingFilterParams): Promise<PaginatedFindingsResponse> {
+  const query = new URLSearchParams();
+  if (params) {
+    if (params.project_id) query.set('project_id', params.project_id);
+    if (params.scan_id) query.set('scan_id', params.scan_id);
+    if (params.status) query.set('status', params.status);
+    if (params.severity) query.set('severity', params.severity);
+    if (params.category) query.set('category', params.category);
+    if (params.search) query.set('search', params.search);
+    if (params.sort_by) query.set('sort_by', params.sort_by);
+    if (params.sort_order) query.set('sort_order', params.sort_order);
+    if (params.limit !== undefined) query.set('limit', String(params.limit));
+    if (params.offset !== undefined) query.set('offset', String(params.offset));
+  }
+  const qs = query.toString();
+  const url = qs ? `/api/findings?${qs}` : '/api/findings';
+  const res = await secureFetch(apiUrl(url));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch findings: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchFindingsSummary(params?: { project_id?: string; scan_id?: string }): Promise<FindingsSummaryResponse> {
+  const query = new URLSearchParams();
+  if (params?.project_id) query.set('project_id', params.project_id);
+  if (params?.scan_id) query.set('scan_id', params.scan_id);
+  const qs = query.toString();
+  const url = qs ? `/api/findings/summary?${qs}` : '/api/findings/summary';
+  const res = await secureFetch(apiUrl(url));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch findings summary: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchFinding(findingId: string): Promise<Finding> {
+  const res = await secureFetch(apiUrl(`/api/findings/${findingId}`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch finding: ${res.statusText}`);
+  }
   return res.json();
 }
 

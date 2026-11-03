@@ -36,8 +36,16 @@ def test_fresh_database_creation_includes_all_tables_and_indexes():
             "projects",
             "scans",
             "findings",
+            "finding_status_events",
+            "audit_anonymization_ticket",
+            "audit_consumed_nonces",
         }
         assert expected_tables.issubset(tables), f"Missing tables: {expected_tables - tables}"
+
+        # Verify columns on findings (Phase 4.1)
+        finding_cols = {c["name"] for c in inspector.get_columns("findings")}
+        assert "version" in finding_cols
+        assert "justification" in finding_cols
 
         # Verify columns on projects
         project_cols = {c["name"] for c in inspector.get_columns("projects")}
@@ -155,11 +163,13 @@ def test_migration_against_legacy_database_preserves_records(tmp_path):
         assert scan_row[1] == proj_id
 
         finding_row = conn.execute(
-            text("SELECT id, scan_id, title FROM findings WHERE id = :fid"),
+            text("SELECT id, scan_id, title, version, justification FROM findings WHERE id = :fid"),
             {"fid": finding_id},
         ).fetchone()
         assert finding_row is not None
         assert finding_row[1] == scan_id
+        assert finding_row[3] == 1
+        assert finding_row[4] is None
 
 
 def test_migrations_are_idempotent(tmp_path):

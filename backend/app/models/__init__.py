@@ -3,6 +3,11 @@ from app.models.user import User, OAuthAccount, UserSession, LoginAttempt, OAuth
 from app.models.project import Project
 from app.models.scan import Scan
 from app.models.finding import Finding
+from app.models.finding_status_event import (
+    FindingStatusEvent,
+    AuditAnonymizationTicket,
+    AuditConsumedNonce,
+)
 
 __all__ = [
     "Base",
@@ -15,5 +20,9 @@ __all__ = [
     "Project",
     "Scan",
     "Finding",
+    "FindingStatusEvent",
+    "AuditAnonymizationTicket",
+    "AuditConsumedNonce",
 ]
+
 

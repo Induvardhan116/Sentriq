@@ -17,7 +17,10 @@ from app.schemas.auth import (
     UserResponse,
     CSRFTokenResponse,
     AuthMessageResponse,
+    UserAnonymizeRequest,
+    UserAnonymizeResponse,
 )
+from app.services.account_service import AdminAccountService
 from app.security.hasher import hash_password, verify_password, needs_rehash, dummy_verify
 from app.security.limiter import is_account_locked
 from app.security.session import generate_session_token, hash_session_token
@@ -562,3 +565,31 @@ async def github_oauth_callback(
     _set_session_cookie(final_response, raw_token)
 
     return final_response
+
+
+@router.post(
+    "/users/{user_id}/anonymize",
+    response_model=UserAnonymizeResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(require_csrf)],
+)
+async def admin_anonymize_user(
+    user_id: str,
+    payload: Optional[UserAnonymizeRequest] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user_and_session: Tuple[User, UserSession] = Depends(get_current_user_and_session),
+):
+    """Authorized administrative account anonymization and deletion endpoint."""
+    caller_user, _ = current_user_and_session
+    req_nonce = payload.nonce if payload else None
+    req_timestamp = payload.timestamp if payload else None
+    req_signature = payload.signature if payload else None
+    return await AdminAccountService.anonymize_and_delete_user(
+        db=db,
+        caller_user=caller_user,
+        target_user_id=user_id,
+        nonce=req_nonce,
+        timestamp=req_timestamp,
+        signature=req_signature,
+    )
+

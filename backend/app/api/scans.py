@@ -10,6 +10,7 @@ from app.models.finding import Finding
 from app.models.user import User
 from app.schemas.scan import ScanDetailResponse, ScanSummaryResponse
 from app.schemas.finding import FindingResponse
+from app.services.finding_service import FindingService
 from app.security.deps import get_authenticated_user_or_dev_mode, verify_scan_access
 
 router = APIRouter(prefix="/scans", tags=["Scans"])
@@ -42,20 +43,7 @@ async def get_scan_findings(
     user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
 ):
     """Retrieve normalized findings for a specific scan with strict ownership check."""
-    scan_stmt = (
-        select(Scan)
-        .options(selectinload(Scan.project))
-        .where(Scan.id == scan_id)
-    )
-    scan_res = await db.execute(scan_stmt)
-    scan = scan_res.scalar_one_or_none()
-
-    verify_scan_access(scan, user, scan_id)
-
-    stmt = select(Finding).where(Finding.scan_id == scan_id).order_by(Finding.risk_score.desc())
-    result = await db.execute(stmt)
-    findings = result.scalars().all()
-    return findings
+    return await FindingService.get_scan_findings(db=db, scan_id=scan_id, user=user)
 
 
 @router.get("/{scan_id}/summary", response_model=ScanSummaryResponse)

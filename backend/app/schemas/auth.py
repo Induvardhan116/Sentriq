@@ -122,3 +122,23 @@ class AuthMessageResponse(BaseModel):
 
     message: str
     detail: Optional[str] = None
+
+
+class UserAnonymizeRequest(BaseModel):
+    """Payload for authorized administrative user anonymization."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nonce: Optional[str] = Field(None, max_length=64, description="Cryptographic nonce for replay prevention")
+    timestamp: Optional[int] = Field(None, description="Unix timestamp of authorization generation")
+    signature: Optional[str] = Field(None, description="HMAC-SHA256 authorization signature")
+
+
+class UserAnonymizeResponse(BaseModel):
+    """Response payload for completed user anonymization."""
+
+    target_user_id: str
+    events_anonymized: int
+    nonce: str
+    status: str
+

@@ -28,6 +28,9 @@ async def init_test_db():
     yield
     # Clean up table rows after each test to isolate test states
     async with engine.begin() as conn:
+        from sqlalchemy import text
+        await conn.execute(text("DROP TRIGGER IF EXISTS trg_audit_events_no_delete"))
+        await conn.execute(text("DROP TRIGGER IF EXISTS trg_audit_events_protect_update"))
         for table in reversed(Base.metadata.sorted_tables):
             await conn.execute(table.delete())
 

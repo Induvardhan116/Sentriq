@@ -1,11 +1,12 @@
 import uuid
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import String, Integer, Float, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.scan import Scan
+    from app.models.finding_status_event import FindingStatusEvent
 
 
 class Finding(Base, TimestampMixin):
@@ -32,10 +33,21 @@ class Finding(Base, TimestampMixin):
     remediation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(
         String(32), default="open", nullable=False, index=True
-    )  # open, in_progress, resolved, false_positive
+    )  # open, in_progress, resolved, false_positive, accepted_risk
     fingerprint: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True, index=True
     )
 
-    # Relationship
+    # Phase 4.1 additions
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    justification: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Relationships
     scan: Mapped["Scan"] = relationship("Scan", back_populates="findings")
+    status_events: Mapped[List["FindingStatusEvent"]] = relationship(
+        "FindingStatusEvent",
+        back_populates="finding",
+        order_by="desc(FindingStatusEvent.created_at)",
+        lazy="selectin",
+    )
+

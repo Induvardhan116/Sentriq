@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     SESSION_COOKIE_SAMESITE: str = "lax"  # Strictly "lax" or "strict"; never weakened to "none"
     FRONTEND_URL: str = "http://localhost:5173"
 
+    # Email Delivery (Resend HTTPS API)
+    RESEND_API_KEY: Optional[str] = None
+    EMAIL_FROM: str = "Sentriq Security <onboarding@resend.dev>"
+
 
 
     # Rate limiting & Account Lockout
@@ -97,22 +101,23 @@ class Settings(BaseSettings):
     # In production, setting AUTH_ENABLED=true requires administrative acknowledgement that
     # live browser-level verification of same-origin or same-site domain architecture was completed (PRODUCTION_AUTH_VERIFIED=true).
     # NOTE: PRODUCTION_AUTH_VERIFIED is NOT proof of a working architecture. To prevent accidental misconfiguration,
-    # the system strictly fails closed to AUTH_ENABLED=False if unverified OR if cross-site PSL domains
-    # (*.vercel.app / *.onrender.com) remain configured in CORS_ORIGINS or FRONTEND_URL.
+    # the system strictly fails closed to AUTH_ENABLED=False if unverified, if localhost/unencrypted HTTP origins remain,
+    # or if an unsupported/arbitrary origin is configured.
     PRODUCTION_AUTH_VERIFIED: bool = False
 
     @model_validator(mode="after")
     def resolve_auth_enabled(self) -> "Settings":
         """Resolve AUTH_ENABLED based on explicit setting, architecture verification, and environment.
 
-        Policy (Phase 3.3):
+        Policy (Production Gate):
         - In production (ENVIRONMENT == 'production'), authentication MUST be disabled by default (AUTH_ENABLED=False).
-        - An explicit AUTH_ENABLED=true in production must not silently bypass deployment requirements.
-          Enabling in production requires:
+        - An explicit AUTH_ENABLED=true in production requires:
           1. AUTH_ENABLED=true
           2. PRODUCTION_AUTH_VERIFIED=true
-          3. Replacement of default cross-site PSL domains (*.vercel.app and *.onrender.com) with
-             a unified apex custom domain or same-origin reverse proxy gateway.
+          3. Valid same-origin reverse proxy gateway (the sanctioned https://sentriq-rouge.vercel.app)
+             or a verified custom apex domain (e.g., https://app.sentriq.io).
+          4. No localhost, 127.0.0.1, non-HTTPS, or direct onrender.com frontend origins.
+          5. Arbitrary, unapproved *.vercel.app origins remain strictly rejected.
           If any condition is not met, the system fails closed to AUTH_ENABLED=False.
         - In non-production environments (development, test), authentication defaults to enabled (AUTH_ENABLED=True)
           for developer and testing usability, unless explicitly set to false.
@@ -120,23 +125,37 @@ class Settings(BaseSettings):
         is_prod = str(self.ENVIRONMENT).strip().lower() == "production"
         if is_prod:
             origins = self.CORS_ORIGINS if isinstance(self.CORS_ORIGINS, list) else [str(self.CORS_ORIGINS)]
-            is_cross_site_or_unsupported = any(
-                "vercel.app" in str(origin).lower()
-                or "onrender.com" in str(origin).lower()
-                or "localhost" in str(origin).lower()
-                or "127.0.0.1" in str(origin).lower()
-                for origin in origins
-            ) or (
-                "vercel.app" in str(self.FRONTEND_URL).lower()
-                or "onrender.com" in str(self.FRONTEND_URL).lower()
-                or "localhost" in str(self.FRONTEND_URL).lower()
-                or "127.0.0.1" in str(self.FRONTEND_URL).lower()
-            )
+            frontend_str = str(self.FRONTEND_URL).strip().lower()
 
-            if is_cross_site_or_unsupported or not self.AUTH_ENABLED or not self.PRODUCTION_AUTH_VERIFIED:
+            SANCTIONED_VERCEL_GATEWAY = "https://sentriq-rouge.vercel.app"
+
+            def is_insecure_or_unsupported(origin: str) -> bool:
+                s = origin.strip().lower()
+                # 1. Reject local/private dev addresses in production
+                if "localhost" in s or "127.0.0.1" in s or "0.0.0.0" in s:
+                    return True
+                # 2. Reject Render backend hostname as frontend (Render is API only)
+                if "onrender.com" in s:
+                    return True
+                # 3. Require HTTPS in production
+                if not s.startswith("https://"):
+                    return True
+                # 4. Reject arbitrary *.vercel.app domains (only the sanctioned proxy gateway is allowed)
+                if "vercel.app" in s and s != SANCTIONED_VERCEL_GATEWAY:
+                    return True
+                return False
+
+            has_insecure = any(is_insecure_or_unsupported(orig) for orig in origins) or is_insecure_or_unsupported(frontend_str)
+
+            if has_insecure or not self.AUTH_ENABLED or not self.PRODUCTION_AUTH_VERIFIED:
                 self.AUTH_ENABLED = False
             else:
                 self.AUTH_ENABLED = True
+                # Production Session Cookie Security Enforcement:
+                # When production authentication is successfully enabled, strictly force
+                # SESSION_COOKIE_SECURE=True. An environment variable explicitly set to
+                # SESSION_COOKIE_SECURE=false must NOT override this requirement.
+                self.SESSION_COOKIE_SECURE = True
         else:
             if self.AUTH_ENABLED is None:
                 self.AUTH_ENABLED = True

@@ -246,7 +246,17 @@ def run_migrations(connection) -> None:
                 )
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_projects_owner_id ON projects(owner_id)"))
 
-    # 4. Explicit fallback migration for 'oauth_states' table and indexes (Phase 3.3)
+    # 4. Check 'users' table for 'is_verified' column
+    if "users" in tables:
+        user_columns = [c["name"] for c in inspector.get_columns("users")]
+        if "is_verified" not in user_columns:
+            logger.info("Migrating database: adding 'is_verified' column to users table.")
+            if dialect_name == "sqlite":
+                connection.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT 1"))
+            else:
+                connection.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT TRUE"))
+
+    # 5. Explicit fallback migration for 'oauth_states' table and indexes (Phase 3.3)
     if "oauth_states" not in tables:
         logger.info("Migrating database: creating 'oauth_states' table and indexes.")
         if dialect_name == "sqlite":
@@ -373,7 +383,91 @@ def run_migrations(connection) -> None:
             text("CREATE INDEX IF NOT EXISTS ix_audit_consumed_nonces_expires_at ON audit_consumed_nonces(expires_at)")
         )
 
-    # 8. Phase 4.1: Dialect-Specific Immutability Triggers
+    # 8. Email Verification Tokens migration
+    if "email_verification_tokens" not in tables:
+        logger.info("Migrating database: creating 'email_verification_tokens' table.")
+        if dialect_name == "sqlite":
+            create_verify_sql = text("""
+                CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash VARCHAR(64) NOT NULL UNIQUE,
+                    expires_at TIMESTAMP NOT NULL,
+                    consumed_at TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            create_verify_sql = text("""
+                CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash VARCHAR(64) NOT NULL UNIQUE,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    consumed_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        connection.execute(create_verify_sql)
+
+    connection.execute(
+        text("CREATE UNIQUE INDEX IF NOT EXISTS ix_email_verification_tokens_token_hash ON email_verification_tokens(token_hash)")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_email_verification_tokens_user_id ON email_verification_tokens(user_id)")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_email_verification_tokens_expires_at ON email_verification_tokens(expires_at)")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_email_verification_tokens_consumed_at ON email_verification_tokens(consumed_at)")
+    )
+
+    # 9. Password Reset Tokens migration
+    if "password_reset_tokens" not in tables:
+        logger.info("Migrating database: creating 'password_reset_tokens' table.")
+        if dialect_name == "sqlite":
+            create_reset_sql = text("""
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash VARCHAR(64) NOT NULL UNIQUE,
+                    expires_at TIMESTAMP NOT NULL,
+                    consumed_at TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            create_reset_sql = text("""
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token_hash VARCHAR(64) NOT NULL UNIQUE,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    consumed_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        connection.execute(create_reset_sql)
+
+    connection.execute(
+        text("CREATE UNIQUE INDEX IF NOT EXISTS ix_password_reset_tokens_token_hash ON password_reset_tokens(token_hash)")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_user_id ON password_reset_tokens(user_id)")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_expires_at ON password_reset_tokens(expires_at)")
+    )
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_consumed_at ON password_reset_tokens(consumed_at)")
+    )
+
+    # 10. Phase 4.1: Dialect-Specific Immutability Triggers
     if dialect_name == "sqlite":
         connection.execute(text(SQLITE_TRIGGER_NO_DELETE))
         connection.execute(text(SQLITE_TRIGGER_PROTECT_UPDATE))

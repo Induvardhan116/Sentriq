@@ -40,6 +40,9 @@ class User(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, nullable=False
     )
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     is_superuser: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )
@@ -66,6 +69,18 @@ class User(Base, TimestampMixin):
     projects: Mapped[List["Project"]] = relationship(
         "Project",
         back_populates="owner",
+        lazy="selectin",
+    )
+    verification_tokens: Mapped[List["EmailVerificationToken"]] = relationship(
+        "EmailVerificationToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    password_reset_tokens: Mapped[List["PasswordResetToken"]] = relationship(
+        "PasswordResetToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
         lazy="selectin",
     )
 
@@ -202,6 +217,74 @@ class OAuthState(Base, TimestampMixin):
     @property
     def is_expired(self) -> bool:
         """Evaluate if the OAuth state has exceeded its valid lifespan."""
+        now = datetime.now(timezone.utc)
+        exp = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=timezone.utc)
+        return now >= exp
+
+
+class EmailVerificationToken(Base, TimestampMixin):
+    """Server-side tracked single-use token for email verification."""
+
+    __tablename__ = "email_verification_tokens"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="verification_tokens")
+
+    @property
+    def is_consumed(self) -> bool:
+        return self.consumed_at is not None
+
+    @property
+    def is_expired(self) -> bool:
+        now = datetime.now(timezone.utc)
+        exp = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=timezone.utc)
+        return now >= exp
+
+
+class PasswordResetToken(Base, TimestampMixin):
+    """Server-side tracked single-use token for password recovery."""
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(
+        String(64), unique=True, index=True, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    consumed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="password_reset_tokens")
+
+    @property
+    def is_consumed(self) -> bool:
+        return self.consumed_at is not None
+
+    @property
+    def is_expired(self) -> bool:
         now = datetime.now(timezone.utc)
         exp = self.expires_at if self.expires_at.tzinfo else self.expires_at.replace(tzinfo=timezone.utc)
         return now >= exp

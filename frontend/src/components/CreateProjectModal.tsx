@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, ShieldCheck, AlertCircle, Globe, Lock } from 'lucide-react';
 import { createProject } from '../services/api';
 import { Project } from '../types/project';
+import { useAuth } from '../context/AuthContext';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -14,6 +15,8 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   onClose,
   onProjectCreated,
 }) => {
+  const { user } = useAuth();
+  const isUnverified = Boolean(user && user.is_verified === false);
   const [name, setName] = useState('');
   const [targetUrl, setTargetUrl] = useState('');
   const [authorizationConfirmed, setAuthorizationConfirmed] = useState(false);
@@ -66,6 +69,31 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             <X size={18} />
           </button>
         </div>
+
+        {isUnverified && (
+          <div
+            style={{
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              borderRadius: '8px',
+              padding: '12px 14px',
+              margin: '16px 24px 0 24px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              fontSize: '0.82rem',
+              color: '#fbbf24',
+            }}
+          >
+            <AlertCircle size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#f59e0b' }} />
+            <div>
+              <strong style={{ display: 'block', color: '#fef3c7', marginBottom: '2px' }}>
+                Account Email Not Verified
+              </strong>
+              Creating new assessment projects and triggering scans requires a verified email address. Please check your inbox for the verification link or use the resend button at the top of the dashboard.
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="alert-box-error">
@@ -136,10 +164,10 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             <button
               type="submit"
               className="btn-primary"
-              disabled={loading || !name || !targetUrl || !authorizationConfirmed}
+              disabled={loading || !name || !targetUrl || !authorizationConfirmed || isUnverified}
             >
               <Lock size={14} />
-              <span>{loading ? 'Creating Target...' : 'Create Project'}</span>
+              <span>{loading ? 'Creating Target...' : isUnverified ? 'Verification Required' : 'Create Project'}</span>
             </button>
           </div>
         </form>

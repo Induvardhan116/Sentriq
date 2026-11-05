@@ -27,7 +27,7 @@ from datetime import datetime, timezone, timedelta
 import pytest
 from httpx import AsyncClient
 from fastapi import HTTPException
-from sqlalchemy import create_engine, inspect, text, select
+from sqlalchemy import create_engine, inspect, text, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.dialects import postgresql
@@ -74,6 +74,12 @@ async def authenticated_owner(async_client: AsyncClient):
     assert resp.status_code == 201
     csrf_token = resp.json().get("csrf_token")
     async_client.headers.update({"Origin": "http://localhost:5173", "X-CSRF-Token": csrf_token})
+    from app.database.session import AsyncSessionLocal
+    from app.models.user import User
+    from sqlalchemy import update
+    async with AsyncSessionLocal() as session:
+        await session.execute(update(User).where(User.email == email).values(is_verified=True))
+        await session.commit()
     return {"email": email}
 
 
@@ -271,8 +277,12 @@ async def test_audit_history_recording_and_tenant_isolation(
         },
         headers={"Origin": "http://localhost:5173"},
     )
+    other_email = other_reg.json()["email"]
     other_csrf = other_reg.json().get("csrf_token")
     async_client.headers.update({"Origin": "http://localhost:5173", "X-CSRF-Token": other_csrf})
+    async with AsyncSessionLocal() as session:
+        await session.execute(update(User).where(User.email == other_email).values(is_verified=True))
+        await session.commit()
 
     unauth_hist_resp = await async_client.get(f"/api/findings/{finding_id}/history")
     assert unauth_hist_resp.status_code == 404
@@ -647,6 +657,9 @@ async def test_admin_anonymization_api_endpoint_flow(async_client: AsyncClient):
     assert resp_tgt.status_code == 201
     target_id = resp_tgt.json()["id"]
     target_csrf = resp_tgt.json()["csrf_token"]
+    async with AsyncSessionLocal() as session:
+        await session.execute(update(User).where(User.email.in_([admin_email, target_email])).values(is_verified=True))
+        await session.commit()
 
     # Target user creates a project, scan, and updates finding status to create an audit record
     async_client.headers.update({"Origin": "http://localhost:5173", "X-CSRF-Token": target_csrf})

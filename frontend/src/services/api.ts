@@ -12,13 +12,17 @@ import type {
 import type { User, LoginPayload, RegisterPayload, ProfileUpdatePayload, AuthResponse } from '../types/auth';
 
 /**
- * In production (Vercel), VITE_API_BASE_URL is set to the full backend origin
- * including the /api prefix, e.g. "https://sentriq.onrender.com/api".
+ * Same-Origin API Architecture:
+ * Both local development (Vite proxy) and production deployment (Vercel reverse proxy)
+ * route browser requests to `/api` on the same origin as the frontend.
  *
- * In local development the variable is absent, so API_BASE is an empty string
- * and every fetch('/api/...') is handled by the Vite dev-server proxy.
+ * - In local development: Vite proxy routes `/api/...` to `http://127.0.0.1:8000/api/...`
+ * - In production (Vercel): Vercel rewrites `/api/:path*` to `https://sentriq.onrender.com/api/:path*`
  *
- * We strip a trailing slash so that path concatenation is always clean.
+ * When VITE_API_BASE_URL is omitted or empty, `API_BASE` is `""`, and all requests
+ * use relative paths (e.g. `/api/auth/me`), ensuring HttpOnly cookies are treated as first-party
+ * and never dropped by browser cross-site / PSL restrictions.
+ * If VITE_API_BASE_URL is explicitly defined (e.g. for standalone API testing), it is respected.
  */
 const RAW_BASE =
   (typeof import.meta !== 'undefined' && (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL) ||
@@ -167,6 +171,58 @@ export async function authUpdateProfile(payload: ProfileUpdatePayload): Promise<
     setMemoryCsrfToken(data.csrf_token);
   }
   return data;
+}
+
+export async function authRequestPasswordReset(email: string): Promise<{ message: string }> {
+  const res = await secureFetch(apiUrl('/api/auth/password-reset/request'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to request password reset: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function authConfirmPasswordReset(token: string, newPassword: string): Promise<{ message: string }> {
+  const res = await secureFetch(apiUrl('/api/auth/password-reset/confirm'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to reset password: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function authRequestEmailVerification(email?: string): Promise<{ message: string }> {
+  const res = await secureFetch(apiUrl('/api/auth/verify-email/request'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(email ? { email } : {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to request verification email: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function authConfirmEmailVerification(token: string): Promise<{ message: string }> {
+  const res = await secureFetch(apiUrl('/api/auth/verify-email/confirm'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to verify email: ${res.statusText}`);
+  }
+  return res.json();
 }
 
 // =====================================================================

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { AlertOctagon, ArrowLeft } from 'lucide-react';
+import { AlertOctagon, ArrowLeft, Shield } from 'lucide-react';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { SystemStatusCard } from './components/SystemStatusCard';
@@ -10,6 +10,10 @@ import { ScanDetailView } from './components/ScanDetailView';
 import { ProjectDetailView } from './components/ProjectDetailView';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
+import { ForgotPasswordPage } from './components/ForgotPasswordPage';
+import { ResetPasswordPage } from './components/ResetPasswordPage';
+import { VerifyEmailPage } from './components/VerifyEmailPage';
+import { UnverifiedEmailBanner } from './components/UnverifiedEmailBanner';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { fetchSystemHealth, fetchProjects } from './services/api';
 import { SystemHealth } from './types/system';
@@ -17,7 +21,7 @@ import { Project } from './types/project';
 import { AppRoute, parseRoute, navigate } from './utils/routing';
 
 const AppContent: React.FC = () => {
-  useAuth();
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [latencyMs, setLatencyMs] = useState<number>(0);
@@ -68,13 +72,73 @@ const AppContent: React.FC = () => {
     loadProjects();
   }, [loadHealth, loadProjects]);
 
+  // Loading state while restoring session
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          minHeight: '100vh',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: 'var(--bg-canvas, #090d16)',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <div
+            className="brand-logo-badge"
+            style={{
+              width: '48px',
+              height: '48px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: '12px',
+              backgroundColor: 'var(--accent-cyan-subtle, rgba(6, 182, 212, 0.15))',
+              color: 'var(--accent-cyan, #06b6d4)',
+            }}
+          >
+            <Shield size={28} />
+          </div>
+          <div style={{ fontSize: '0.88rem', color: 'var(--text-muted, #94a3b8)' }}>
+            Authenticating session...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Handle dedicated full-screen auth routes
   if (route.view === 'login') {
+    if (isAuthenticated) {
+      navigate({ view: 'overview' });
+      return null;
+    }
     return <LoginPage />;
   }
 
   if (route.view === 'register') {
+    if (isAuthenticated) {
+      navigate({ view: 'overview' });
+      return null;
+    }
     return <RegisterPage />;
+  }
+
+  if (route.view === 'forgot-password') {
+    if (isAuthenticated) {
+      navigate({ view: 'overview' });
+      return null;
+    }
+    return <ForgotPasswordPage />;
+  }
+
+  if (route.view === 'reset-password') {
+    return <ResetPasswordPage token={route.token} />;
+  }
+
+  if (route.view === 'verify-email') {
+    return <VerifyEmailPage token={route.token} />;
   }
 
   // Determine active sidebar tab
@@ -98,6 +162,10 @@ const AppContent: React.FC = () => {
       <Sidebar currentTab={currentTab} onSelectTab={handleSelectTab} />
       <div className="main-content">
         <Header health={health} loading={loadingHealth} onRefresh={loadHealth} />
+
+        {isAuthenticated && user && user.is_verified === false && (
+          <UnverifiedEmailBanner email={user.email} />
+        )}
 
         <main className="page-body">
           {route.view === 'error' ? (

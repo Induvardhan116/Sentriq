@@ -487,23 +487,18 @@ def test_auth_enabled_environment_resolution():
     prod_unverified = Settings(ENVIRONMENT="production", AUTH_ENABLED=True)
     assert prod_unverified.AUTH_ENABLED is False
 
-    # 3. Production with AUTH_ENABLED=True and PRODUCTION_AUTH_VERIFIED=True but on Vercel/Render defaults STILL FAILS CLOSED
-    prod_cross_site = Settings(
+    # 3. Production with AUTH_ENABLED=True and PRODUCTION_AUTH_VERIFIED=True:
+    # 3a. Arbitrary/unapproved *.vercel.app origins FAIL CLOSED
+    prod_arbitrary_vercel = Settings(
         ENVIRONMENT="production",
         AUTH_ENABLED=True,
         PRODUCTION_AUTH_VERIFIED=True,
+        CORS_ORIGINS=["https://attacker-app.vercel.app"],
+        FRONTEND_URL="https://attacker-app.vercel.app",
     )
-    assert prod_cross_site.AUTH_ENABLED is False
+    assert prod_arbitrary_vercel.AUTH_ENABLED is False
 
-    prod_vercel = Settings(
-        ENVIRONMENT="production",
-        AUTH_ENABLED=True,
-        PRODUCTION_AUTH_VERIFIED=True,
-        CORS_ORIGINS=["https://sentriq-rouge.vercel.app"],
-        FRONTEND_URL="https://sentriq-rouge.vercel.app",
-    )
-    assert prod_vercel.AUTH_ENABLED is False
-
+    # 3b. Direct onrender.com backend host as frontend FAILS CLOSED
     prod_render = Settings(
         ENVIRONMENT="production",
         AUTH_ENABLED=True,
@@ -512,6 +507,26 @@ def test_auth_enabled_environment_resolution():
         FRONTEND_URL="https://sentriq.onrender.com",
     )
     assert prod_render.AUTH_ENABLED is False
+
+    # 3c. Unencrypted HTTP origin in production FAILS CLOSED
+    prod_http = Settings(
+        ENVIRONMENT="production",
+        AUTH_ENABLED=True,
+        PRODUCTION_AUTH_VERIFIED=True,
+        CORS_ORIGINS=["http://sentriq-rouge.vercel.app"],
+        FRONTEND_URL="http://sentriq-rouge.vercel.app",
+    )
+    assert prod_http.AUTH_ENABLED is False
+
+    # 3d. Sanctioned Vercel reverse-proxy gateway WITH verification SUCCEEDS
+    prod_sanctioned_vercel = Settings(
+        ENVIRONMENT="production",
+        AUTH_ENABLED=True,
+        PRODUCTION_AUTH_VERIFIED=True,
+        CORS_ORIGINS=["https://sentriq-rouge.vercel.app"],
+        FRONTEND_URL="https://sentriq-rouge.vercel.app",
+    )
+    assert prod_sanctioned_vercel.AUTH_ENABLED is True
 
     # 4. Production explicitly enabled WITH verified architecture AND custom domain
     prod_verified = Settings(
@@ -554,6 +569,120 @@ def test_is_ip_eligible_for_flood_limit():
     # Malformed or empty IPs are not eligible
     assert is_ip_eligible_for_flood_limit("", trust_proxy_headers=False) is False
     assert is_ip_eligible_for_flood_limit("invalid-ip", trust_proxy_headers=False) is False
+
+
+# =====================================================================
+# 11. Production Session Cookie Enforcement Tests
+# =====================================================================
+
+def test_production_session_cookie_secure_enforcement():
+    """Verify that SESSION_COOKIE_SECURE is strictly enforced in production."""
+    from app.config import Settings
+
+    # Test A — Production authentication enabled with SESSION_COOKIE_SECURE=false:
+    # Must force SESSION_COOKIE_SECURE=True
+    prod_insecure_override = Settings(
+        ENVIRONMENT="production",
+        AUTH_ENABLED=True,
+        PRODUCTION_AUTH_VERIFIED=True,
+        CORS_ORIGINS=["https://sentriq-rouge.vercel.app"],
+        FRONTEND_URL="https://sentriq-rouge.vercel.app",
+        SESSION_COOKIE_SECURE=False,
+    )
+    assert prod_insecure_override.AUTH_ENABLED is True
+    assert prod_insecure_override.SESSION_COOKIE_SECURE is True
+
+    # Test B — Production authentication already secure:
+    # Must remain SESSION_COOKIE_SECURE=True
+    prod_secure = Settings(
+        ENVIRONMENT="production",
+        AUTH_ENABLED=True,
+        PRODUCTION_AUTH_VERIFIED=True,
+        CORS_ORIGINS=["https://sentriq-rouge.vercel.app"],
+        FRONTEND_URL="https://sentriq-rouge.vercel.app",
+        SESSION_COOKIE_SECURE=True,
+    )
+    assert prod_secure.AUTH_ENABLED is True
+    assert prod_secure.SESSION_COOKIE_SECURE is True
+
+    # Test C — Production authentication disabled:
+    # Authentication remains disabled, no accidental activation
+    prod_disabled = Settings(
+        ENVIRONMENT="production",
+        AUTH_ENABLED=False,
+        PRODUCTION_AUTH_VERIFIED=False,
+        SESSION_COOKIE_SECURE=False,
+    )
+    assert prod_disabled.AUTH_ENABLED is False
+    assert prod_disabled.SESSION_COOKIE_SECURE is False
+
+    # Test D — Local development:
+    # Existing local development behavior remains unchanged
+    dev_auth_off = Settings(
+        ENVIRONMENT="development",
+        AUTH_ENABLED=False,
+        SESSION_COOKIE_SECURE=False,
+    )
+    assert dev_auth_off.AUTH_ENABLED is False
+    assert dev_auth_off.SESSION_COOKIE_SECURE is False
+
+    dev_auth_on = Settings(
+        ENVIRONMENT="development",
+        AUTH_ENABLED=True,
+        SESSION_COOKIE_SECURE=False,
+    )
+    assert dev_auth_on.AUTH_ENABLED is True
+    assert dev_auth_on.SESSION_COOKIE_SECURE is False
+
+
+def test_production_cookie_issuance_attributes():
+    """Test E — Verify session and OAuth state cookies are issued with Secure, HttpOnly, SameSite=Lax, and Path=/."""
+    from unittest.mock import patch
+    from fastapi import Response
+    from app.config import Settings
+    from app.api.auth import _set_session_cookie
+
+    prod_settings = Settings(
+        ENVIRONMENT="production",
+        AUTH_ENABLED=True,
+        PRODUCTION_AUTH_VERIFIED=True,
+        CORS_ORIGINS=["https://sentriq-rouge.vercel.app"],
+        FRONTEND_URL="https://sentriq-rouge.vercel.app",
+        SESSION_COOKIE_SECURE=False,  # Enforces True
+    )
+    assert prod_settings.SESSION_COOKIE_SECURE is True
+
+    # 1. Verify session cookie issuance via auth._set_session_cookie
+    with patch("app.api.auth.settings", prod_settings):
+        resp_session = Response()
+        _set_session_cookie(resp_session, "raw_test_session_token_12345")
+        set_cookie_session = resp_session.headers.get("set-cookie", "")
+
+        assert f"{prod_settings.SESSION_COOKIE_NAME}=raw_test_session_token_12345" in set_cookie_session
+        assert "httponly" in set_cookie_session.lower()
+        assert "secure" in set_cookie_session.lower()
+        assert "samesite=lax" in set_cookie_session.lower()
+        assert "path=/" in set_cookie_session.lower()
+
+    # 2. Verify OAuth state cookie issuance
+    resp_oauth = Response()
+    resp_oauth.set_cookie(
+        key="sentriq_oauth_state",
+        value="raw_oauth_state_12345",
+        max_age=600,
+        httponly=True,
+        secure=prod_settings.SESSION_COOKIE_SECURE,
+        samesite="lax",
+        path="/",
+    )
+    set_cookie_oauth = resp_oauth.headers.get("set-cookie", "")
+
+    assert "sentriq_oauth_state=raw_oauth_state_12345" in set_cookie_oauth
+    assert "httponly" in set_cookie_oauth.lower()
+    assert "secure" in set_cookie_oauth.lower()
+    assert "samesite=lax" in set_cookie_oauth.lower()
+    assert "path=/" in set_cookie_oauth.lower()
+
 
 
 

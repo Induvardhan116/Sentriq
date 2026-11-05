@@ -21,6 +21,7 @@ async def create_test_user_session(
     email: str,
     is_superuser: bool = False,
     is_active: bool = True,
+    is_verified: bool = True,
 ) -> tuple[User, str, str]:
     """Helper creating user in database and returning (user, session_token, csrf_token)."""
     async with AsyncSessionLocal() as session:
@@ -30,6 +31,7 @@ async def create_test_user_session(
             full_name=f"User {email}",
             is_active=is_active,
             is_superuser=is_superuser,
+            is_verified=is_verified,
         )
         session.add(user)
         await session.flush()

@@ -15,6 +15,7 @@ from app.schemas.finding import (
 from app.services.finding_service import FindingService
 from app.security.deps import (
     get_authenticated_user_or_dev_mode,
+    require_verified_user,
     require_csrf_if_auth_enabled,
 )
 
@@ -90,7 +91,7 @@ async def update_finding_status(
     finding_id: str,
     payload: FindingStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    user: Optional[User] = Depends(require_verified_user),
     _csrf: None = Depends(require_csrf_if_auth_enabled),
 ):
     """Update a security finding's lifecycle status with strict project ownership check, OCC, and immutable audit logging."""
@@ -106,7 +107,7 @@ async def update_finding_status(
 async def get_finding_history(
     finding_id: str,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    user: Optional[User] = Depends(require_verified_user),
 ):
     """Retrieve immutable chronological audit history for a finding with tenant ownership enforcement."""
     return await FindingService.get_finding_history(

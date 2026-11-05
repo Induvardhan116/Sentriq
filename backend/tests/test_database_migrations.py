@@ -47,8 +47,14 @@ def test_fresh_database_creation_includes_all_tables_and_indexes():
             "finding_status_events",
             "audit_anonymization_ticket",
             "audit_consumed_nonces",
+            "email_verification_tokens",
+            "password_reset_tokens",
         }
         assert expected_tables.issubset(tables), f"Missing tables: {expected_tables - tables}"
+
+        # Verify columns on users
+        user_cols = {c["name"] for c in inspector.get_columns("users")}
+        assert "is_verified" in user_cols
 
         # Verify columns on findings (Phase 4.1)
         finding_cols = {c["name"] for c in inspector.get_columns("findings")}
@@ -696,8 +702,9 @@ def test_postgresql_migration_statements_are_individual_prepared_commands():
          patch("app.database.migrations.inspect") as mock_inspect:
         mock_inspector = MagicMock()
         mock_inspect.return_value = mock_inspector
-        mock_inspector.get_table_names.return_value = ["findings", "projects", "oauth_states", "finding_status_events"]
-        mock_inspector.get_columns.return_value = [{"name": "id"}, {"name": "risk_score"}]
+        # Simulate partial existing tables to exercise creation paths
+        mock_inspector.get_table_names.return_value = ["findings", "projects", "users"]
+        mock_inspector.get_columns.return_value = [{"name": "id"}]
 
         # Must execute cleanly without raising ProgrammingError
         run_migrations(mock_conn)
@@ -739,6 +746,88 @@ def test_postgresql_migration_statements_are_individual_prepared_commands():
     with pytest.raises(ProgrammingError) as exc_info:
         record_and_validate(failing_sql)
     assert "cannot insert multiple commands into a prepared statement" in str(exc_info.value)
+
+
+def test_users_is_verified_migration_preserves_existing_users_as_verified(tmp_path):
+    """Verify that existing legacy users are migrated with is_verified=True while new users default to False."""
+    db_file = tmp_path / "legacy_users.db"
+    raw_conn = sqlite3.connect(str(db_file))
+    cur = raw_conn.cursor()
+    # Create legacy users table without is_verified column
+    cur.execute("""
+        CREATE TABLE users (
+            id VARCHAR(36) PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            hashed_password VARCHAR(255),
+            full_name VARCHAR(255),
+            avatar_url VARCHAR(1024),
+            is_active BOOLEAN NOT NULL DEFAULT 1,
+            is_superuser BOOLEAN NOT NULL DEFAULT 0,
+            failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+            locked_until TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur.execute("INSERT INTO users (id, email) VALUES ('u-legacy', 'legacy@sentriq.io')")
+    raw_conn.commit()
+    raw_conn.close()
+
+    # Run migrations
+    engine = create_engine(f"sqlite:///{db_file}")
+    with engine.connect() as conn:
+        run_migrations(conn)
+        conn.commit()
+
+        # Verify existing user has is_verified=1 (True)
+        row = conn.execute(text("SELECT email, is_verified FROM users WHERE id = 'u-legacy'")).fetchone()
+        assert row is not None
+        assert row[0] == "legacy@sentriq.io"
+        assert row[1] == 1, "Existing users must be migrated with is_verified=True so they can still log in"
+
+    # Now verify new User created via ORM defaults to is_verified=False
+    with Session(engine) as session:
+        new_user = User(
+            id=str(uuid.uuid4()),
+            email="newuser@sentriq.io",
+            hashed_password="some_hashed_password",
+        )
+        session.add(new_user)
+        session.commit()
+
+        fetched = session.scalar(select(User).where(User.email == "newuser@sentriq.io"))
+        assert fetched is not None
+        assert fetched.is_verified is False, "New user registrations must default to is_verified=False"
+
+
+def test_email_verification_and_password_reset_tokens_tables_migration(tmp_path):
+    """Verify that migrations create verification and password reset tables with appropriate columns and indexes."""
+    db_file = tmp_path / "tokens_migration.db"
+    engine = create_engine(f"sqlite:///{db_file}")
+
+    with engine.connect() as conn:
+        run_migrations(conn)
+        conn.commit()
+
+        inspector = inspect(conn)
+        tables = set(inspector.get_table_names())
+        assert "email_verification_tokens" in tables
+        assert "password_reset_tokens" in tables
+
+        # Verify email_verification_tokens structure
+        verify_cols = {c["name"] for c in inspector.get_columns("email_verification_tokens")}
+        assert {"id", "user_id", "token_hash", "expires_at", "consumed_at"}.issubset(verify_cols)
+        verify_indexes = {idx["name"] for idx in inspector.get_indexes("email_verification_tokens")}
+        assert "ix_email_verification_tokens_token_hash" in verify_indexes
+        assert "ix_email_verification_tokens_user_id" in verify_indexes
+
+        # Verify password_reset_tokens structure
+        reset_cols = {c["name"] for c in inspector.get_columns("password_reset_tokens")}
+        assert {"id", "user_id", "token_hash", "expires_at", "consumed_at"}.issubset(reset_cols)
+        reset_indexes = {idx["name"] for idx in inspector.get_indexes("password_reset_tokens")}
+        assert "ix_password_reset_tokens_token_hash" in reset_indexes
+        assert "ix_password_reset_tokens_user_id" in reset_indexes
+
 
 
 

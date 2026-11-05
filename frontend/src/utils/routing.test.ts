@@ -94,6 +94,37 @@ describe('Routing Helper: parseRoute', () => {
     assert.deepEqual(parseRoute('#/register'), { view: 'register' });
     assert.deepEqual(parseRoute('#/signup'), { view: 'register' });
   });
+
+  it('parses password recovery and verification routes with and without tokens', () => {
+    assert.deepEqual(parseRoute('#/forgot-password'), { view: 'forgot-password' });
+    assert.deepEqual(parseRoute('#/forgot'), { view: 'forgot-password' });
+
+    assert.deepEqual(parseRoute('#/reset-password'), {
+      view: 'reset-password',
+      token: undefined,
+    });
+    assert.deepEqual(parseRoute('#/reset-password?token=abc123xyz'), {
+      view: 'reset-password',
+      token: 'abc123xyz',
+    });
+    assert.deepEqual(parseRoute('#/reset?token=abc123xyz'), {
+      view: 'reset-password',
+      token: 'abc123xyz',
+    });
+
+    assert.deepEqual(parseRoute('#/verify-email'), {
+      view: 'verify-email',
+      token: undefined,
+    });
+    assert.deepEqual(parseRoute('#/verify-email?token=ver-456-tok'), {
+      view: 'verify-email',
+      token: 'ver-456-tok',
+    });
+    assert.deepEqual(parseRoute('#/verify?token=ver-456-tok'), {
+      view: 'verify-email',
+      token: 'ver-456-tok',
+    });
+  });
 });
 
 describe('Routing Helper: routeToHash', () => {
@@ -120,5 +151,16 @@ describe('Routing Helper: routeToHash', () => {
   it('formats auth views', () => {
     assert.equal(routeToHash({ view: 'login' }), '#/login');
     assert.equal(routeToHash({ view: 'register' }), '#/register');
+    assert.equal(routeToHash({ view: 'forgot-password' }), '#/forgot-password');
+    assert.equal(routeToHash({ view: 'reset-password' }), '#/reset-password');
+    assert.equal(
+      routeToHash({ view: 'reset-password', token: 'tok-123' }),
+      '#/reset-password?token=tok-123'
+    );
+    assert.equal(routeToHash({ view: 'verify-email' }), '#/verify-email');
+    assert.equal(
+      routeToHash({ view: 'verify-email', token: 'ver-tok-456' }),
+      '#/verify-email?token=ver-tok-456'
+    );
   });
 });

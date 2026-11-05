@@ -20,10 +20,22 @@ export const LoginPage: React.FC = () => {
         const errParam = params.get('error');
         if (errParam === 'account_link_required') {
           setError(
-            'An account with this email already exists. Please sign in with your password first to explicitly link your GitHub account.'
+            'An account with this email already exists. Please sign in with your password first to link your GitHub account.'
           );
-        } else if (errParam === 'invalid_oauth_state') {
-          setError('GitHub authentication timed out or had an invalid state. Please try again.');
+        } else if (errParam === 'invalid_oauth_state' || errParam === 'oauth_state_already_used') {
+          setError('GitHub authentication session expired or invalid. Please try again.');
+        } else if (errParam === 'oauth_state_expired') {
+          setError('GitHub authentication timed out. Please try again.');
+        } else if (errParam === 'access_denied') {
+          setError('GitHub sign-in was cancelled.');
+        } else if (errParam === 'oauth_no_verified_email') {
+          setError('Your GitHub account does not have a verified primary email. Please verify your email on GitHub and try again.');
+        } else if (errParam === 'oauth_account_conflict') {
+          setError('This GitHub account is already associated with another Sentriq profile.');
+        } else if (errParam === 'oauth_token_exchange_failed' || errParam === 'oauth_communication_error') {
+          setError('Failed to communicate with GitHub. Please try again later.');
+        } else if (errParam === 'account_deactivated') {
+          setError('Your Sentriq account has been deactivated. Please contact support.');
         } else if (errParam) {
           setError(`Authentication error: ${errParam.replace(/_/g, ' ')}`);
         }
@@ -160,12 +172,20 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <div style={{ marginBottom: '22px' }}>
-            <label
-              htmlFor="login-password"
-              style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}
-            >
-              Password
-            </label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <label
+                htmlFor="login-password"
+                style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)' }}
+              >
+                Password
+              </label>
+              <a
+                href="#/forgot-password"
+                style={{ fontSize: '0.74rem', color: 'var(--accent-cyan)', textDecoration: 'none', fontWeight: 500 }}
+              >
+                Forgot password?
+              </a>
+            </div>
             <div style={{ position: 'relative' }}>
               <Lock
                 size={16}

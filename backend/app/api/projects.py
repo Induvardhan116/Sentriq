@@ -19,6 +19,7 @@ from app.scanners.web.scanner import WebsiteScanner
 from app.risk.fingerprint import compute_finding_fingerprint
 from app.security.deps import (
     get_authenticated_user_or_dev_mode,
+    require_verified_user,
     verify_project_access,
     require_csrf_if_auth_enabled,
 )
@@ -145,7 +146,7 @@ async def run_scan_background(scan_id: str, target_url: str):
 async def create_project(
     payload: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    user: Optional[User] = Depends(require_verified_user),
     _csrf: None = Depends(require_csrf_if_auth_enabled),
 ):
     """Create a new authorized security target project assigned to current user."""
@@ -250,7 +251,7 @@ async def get_project(
 async def trigger_project_scan(
     project_id: str,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    user: Optional[User] = Depends(require_verified_user),
     _csrf: None = Depends(require_csrf_if_auth_enabled),
 ):
     """Initiate a safe, non-destructive security scan against an authorized project target."""
@@ -286,7 +287,7 @@ async def trigger_project_scan(
 async def claim_project(
     project_id: str,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    user: Optional[User] = Depends(require_verified_user),
     _csrf: None = Depends(require_csrf_if_auth_enabled),
 ):
     """Atomically claim an unassigned legacy project (owner_id IS NULL).
@@ -365,7 +366,7 @@ async def update_project(
     project_id: str,
     payload: ProjectUpdate,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    user: Optional[User] = Depends(require_verified_user),
     _csrf: None = Depends(require_csrf_if_auth_enabled),
 ):
     """Update project name and/or target website URL with strict SSRF validation."""
@@ -416,7 +417,7 @@ async def update_project(
 async def delete_project(
     project_id: str,
     db: AsyncSession = Depends(get_db),
-    user: Optional[User] = Depends(get_authenticated_user_or_dev_mode),
+    user: Optional[User] = Depends(require_verified_user),
     _csrf: None = Depends(require_csrf_if_auth_enabled),
 ):
     """Safely delete a project and all associated scans and findings within a database transaction."""

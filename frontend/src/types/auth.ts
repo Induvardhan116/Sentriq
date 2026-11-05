@@ -4,6 +4,7 @@ export interface User {
   full_name?: string | null;
   avatar_url?: string | null;
   is_active: boolean;
+  is_verified?: boolean;
   is_superuser: boolean;
   created_at: string;
   csrf_token?: string;
@@ -23,6 +24,19 @@ export interface RegisterPayload {
 export interface ProfileUpdatePayload {
   full_name?: string;
   avatar_url?: string;
+}
+
+export interface PasswordResetRequestPayload {
+  email: string;
+}
+
+export interface PasswordResetConfirmPayload {
+  token: string;
+  new_password: string;
+}
+
+export interface EmailVerificationConfirmPayload {
+  token: string;
 }
 
 export interface AuthResponse extends User {

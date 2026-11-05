@@ -216,6 +216,7 @@ def validate_github_account_linking(
     existing_user_by_email: Optional[Any],
     existing_oauth_account: Optional[Any],
     github_email: str,
+    authenticated_user_id: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
     """Enforce strict account linking policy:
     Never automatically link an existing email/password account to GitHub
@@ -224,13 +225,19 @@ def validate_github_account_linking(
     Returns:
         (is_allowed, error_reason)
     """
-    # 1. If this exact GitHub account is already linked, login is allowed
+    # 1. If this exact GitHub account is already linked to an existing Sentriq user:
     if existing_oauth_account is not None:
+        if authenticated_user_id and existing_oauth_account.user_id != authenticated_user_id:
+            return False, "This GitHub account is already linked to another Sentriq user."
         return True, None
 
-    # 2. If a local user exists with this email but has NOT linked this GitHub account,
-    # auto-linking is strictly prohibited to prevent account takeover.
+    # 2. If a local user exists with this email address:
     if existing_user_by_email is not None:
+        # If the currently logged-in user IS the account owner, explicit authenticated link is permitted:
+        if authenticated_user_id and getattr(existing_user_by_email, "id", None) == authenticated_user_id:
+            return True, None
+
+        # Otherwise, unauthenticated auto-linking is strictly prohibited to prevent account takeover:
         return False, (
             f"An account with email '{github_email}' already exists. "
             "To link your GitHub account, please sign in with your password first "

@@ -16,6 +16,14 @@ async def setup_auth_user(async_client: AsyncClient):
     if reg_resp.status_code == 201:
         csrf_token = reg_resp.json().get("csrf_token")
         async_client.headers.update({"Origin": "http://localhost:5173", "X-CSRF-Token": csrf_token})
+        from app.database.session import AsyncSessionLocal
+        from app.models.user import User
+        from sqlalchemy import update
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                update(User).where(User.email == unique_email).values(is_verified=True)
+            )
+            await session.commit()
     yield
 
 

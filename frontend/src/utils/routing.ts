@@ -5,6 +5,9 @@ export type AppRoute =
   | { view: 'scan'; scanId: string; findingId?: string }
   | { view: 'login' }
   | { view: 'register' }
+  | { view: 'forgot-password' }
+  | { view: 'reset-password'; token?: string }
+  | { view: 'verify-email'; token?: string }
   | { view: 'error'; message: string; submessage?: string };
 
 /**
@@ -30,6 +33,7 @@ export function parseRoute(
   const [pathPart, queryPart] = raw.split('?');
   const queryParams = new URLSearchParams(queryPart || '');
   const findingId = queryParams.get('finding') || undefined;
+  const token = queryParams.get('token') || undefined;
 
   // Split into path segments, filtering out empty strings
   const segments = pathPart.split('/').filter(Boolean);
@@ -45,6 +49,18 @@ export function parseRoute(
 
   if (first === 'register' || first === 'signup') {
     return { view: 'register' };
+  }
+
+  if (first === 'forgot-password' || first === 'forgot') {
+    return { view: 'forgot-password' };
+  }
+
+  if (first === 'reset-password' || first === 'reset') {
+    return { view: 'reset-password', token };
+  }
+
+  if (first === 'verify-email' || first === 'verify') {
+    return { view: 'verify-email', token };
   }
 
   if (first === 'overview' || first === 'dashboard') {
@@ -126,6 +142,16 @@ export function routeToHash(route: AppRoute): string {
       return '#/login';
     case 'register':
       return '#/register';
+    case 'forgot-password':
+      return '#/forgot-password';
+    case 'reset-password':
+      return route.token
+        ? `#/reset-password?token=${encodeURIComponent(route.token)}`
+        : '#/reset-password';
+    case 'verify-email':
+      return route.token
+        ? `#/verify-email?token=${encodeURIComponent(route.token)}`
+        : '#/verify-email';
     case 'error':
       return typeof window !== 'undefined' && window.location.hash
         ? window.location.hash

@@ -157,6 +157,58 @@ async def get_authenticated_user_or_dev_mode(
             return None
 
 
+async def require_verified_user(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    """Dependency that enforces email verification for protected operations.
+
+    Security Guarantees:
+    - Verification status is verified directly against the database User entity.
+    - If AUTH_ENABLED is True:
+      - Unauthenticated requests raise HTTP 401 Unauthorized.
+      - Unverified users strictly raise HTTP 403 Forbidden.
+      - Returns verified User entity.
+    - If AUTH_ENABLED is False (local dev):
+      - If authenticated, unverified users strictly raise HTTP 403 Forbidden.
+      - If unauthenticated, allows local dev fallback (returns None).
+    """
+    if settings.AUTH_ENABLED:
+        user, _ = await get_current_user_and_session(request=request, db=db)
+        if not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Email verification required. Please verify your email address to access this feature.",
+            )
+        return user
+    else:
+        try:
+            user, _ = await get_current_user_and_session(request=request, db=db)
+            if not user.is_verified:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Email verification required. Please verify your email address to access this feature.",
+                )
+            return user
+        except HTTPException as e:
+            if e.status_code == status.HTTP_403_FORBIDDEN:
+                raise e
+            return None
+
+
+async def require_verified_user_strict(
+    user_and_session: Tuple[User, UserSession] = Depends(get_current_user_and_session),
+) -> User:
+    """Strict variant that unconditionally requires an authenticated and verified User."""
+    user, _ = user_and_session
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required. Please verify your email address to access this feature.",
+        )
+    return user
+
+
 def verify_project_access(
     project: Optional[Project],
     user: Optional[User],

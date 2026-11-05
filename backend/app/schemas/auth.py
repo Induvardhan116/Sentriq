@@ -104,6 +104,7 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool = True
+    is_verified: bool = False
     is_superuser: bool = False
     created_at: datetime
     csrf_token: Optional[str] = Field(
@@ -141,4 +142,76 @@ class UserAnonymizeResponse(BaseModel):
     events_anonymized: int
     nonce: str
     status: str
+
+
+class PasswordResetRequest(BaseModel):
+    """Payload for requesting a password reset email."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr = Field(..., description="Account email address")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Payload for completing password reset with token."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(..., min_length=16, max_length=128, description="Password reset token")
+    new_password: str = Field(
+        ...,
+        min_length=10,
+        max_length=128,
+        description="New password (minimum 10 characters with mixed character classes)",
+    )
+
+    @field_validator("token")
+    @classmethod
+    def clean_token(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        if len(v) < 10:
+            raise ValueError("Password must be at least 10 characters long.")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter.")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter.")
+        if not re.search(r"[0-9\W_]", v):
+            raise ValueError("Password must contain at least one number or special character.")
+        return v
+
+
+class EmailVerificationRequest(BaseModel):
+    """Payload for requesting email verification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: Optional[EmailStr] = Field(None, description="Optional email address if unauthenticated")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip().lower() if v else None
+
+
+class EmailVerificationConfirmRequest(BaseModel):
+    """Payload for confirming email verification with token."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(..., min_length=16, max_length=128, description="Email verification token")
+
+    @field_validator("token")
+    @classmethod
+    def clean_token(cls, v: str) -> str:
+        return v.strip()
+
 

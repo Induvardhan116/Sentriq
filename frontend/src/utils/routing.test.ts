@@ -16,6 +16,32 @@ describe('Routing Helper: parseRoute', () => {
     assert.deepEqual(parseRoute('#/projects/'), { view: 'projects' });
   });
 
+  it('parses findings hub route with and without finding parameter', () => {
+    assert.deepEqual(parseRoute('#/findings'), {
+      view: 'findings',
+      findingId: undefined,
+    });
+    assert.deepEqual(parseRoute('#/findings/'), {
+      view: 'findings',
+      findingId: undefined,
+    });
+    assert.deepEqual(parseRoute('#/findings/find-abc-123'), {
+      view: 'findings',
+      findingId: 'find-abc-123',
+    });
+    assert.deepEqual(parseRoute('#/findings?finding=find-xyz-789'), {
+      view: 'findings',
+      findingId: 'find-xyz-789',
+    });
+  });
+
+  it('parses analytics and risk routes', () => {
+    assert.deepEqual(parseRoute('#/analytics'), { view: 'analytics' });
+    assert.deepEqual(parseRoute('#/analytics/'), { view: 'analytics' });
+    assert.deepEqual(parseRoute('#/risk'), { view: 'analytics' });
+    assert.deepEqual(parseRoute('#/risk/'), { view: 'analytics' });
+  });
+
   it('parses valid scan routes with and without query params', () => {
     assert.deepEqual(parseRoute('#/scan/scan-123'), {
       view: 'scan',
@@ -134,6 +160,18 @@ describe('Routing Helper: routeToHash', () => {
 
   it('formats projects', () => {
     assert.equal(routeToHash({ view: 'projects' }), '#/projects');
+  });
+
+  it('formats findings hub route with and without finding parameter', () => {
+    assert.equal(routeToHash({ view: 'findings' }), '#/findings');
+    assert.equal(
+      routeToHash({ view: 'findings', findingId: 'find-123' }),
+      '#/findings?finding=find-123'
+    );
+  });
+
+  it('formats analytics route', () => {
+    assert.equal(routeToHash({ view: 'analytics' }), '#/analytics');
   });
 
   it('formats project detail', () => {

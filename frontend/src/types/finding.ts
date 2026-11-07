@@ -16,6 +16,7 @@ export interface Finding {
   evidence?: string | null;
   remediation?: string | null;
   status: FindingStatus;
+  fingerprint?: string | null;
   version?: number;
   justification?: string | null;
   project_id?: string | null;
@@ -62,4 +63,3 @@ export interface FindingFilterParams {
   limit?: number;
   offset?: number;
 }
-

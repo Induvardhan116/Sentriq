@@ -1,169 +1,205 @@
 # Sentriq — Application Security Intelligence Platform
 
-Sentriq is a production-grade, defensive cybersecurity platform designed to continuously assess, correlate, and score the security posture of web applications and source code repositories.
+Sentriq is a production-grade, full-lifecycle defensive cybersecurity platform designed to continuously assess, correlate, and score the security posture of web applications, source code repositories, API endpoints, and cloud infrastructure.
 
-> **Responsible Security Notice**: Sentriq performs safe, authorized, non-destructive security checks (HTTPS/TLS configuration, response headers, cookie flags, CORS policies, information disclosure, and mixed-content analysis). It does **not** conduct exploitation, denial of service, brute force attacks, or intrusive testing. Users must explicitly confirm target ownership or authorization prior to testing.
-
----
-
-## Current Status: Phase 2 Verified (Website Security Scanner)
-
-Phase 2 introduces Sentriq's first core security capability: a safe, low-impact, bounded website security assessment engine backed by deterministic risk and posture scoring.
-
-### Core Capabilities
-1. **Target Authorization & Ownership Enforcement**: Every project requires explicit confirmation before scanning is allowed.
-2. **SSRF & Safety Layer**: Prohibits dangerous schemes (`file://`, `ftp://`, `javascript:`, `data:`, `gopher://`) and restricts scans against private RFC 1918 networks, loopback addresses (`127.0.0.1`, `localhost`), and cloud instance metadata (`169.254.169.254`).
-3. **Safe Bounded HTTP Client**: Enforces request timeouts, max response read size (2MB), limited redirects, and non-destructive HTTP methods (`GET`, `HEAD`).
-4. **HTTPS / TLS Assessment**: Evaluates TLS availability, SSL certificate validity/expiration, certificate hostname matching, and HTTP-to-HTTPS redirect posture.
-5. **Security Response Headers**: Evaluates `Content-Security-Policy`, `Strict-Transport-Security` (HSTS), `X-Content-Type-Options`, `X-Frame-Options` (clickjacking protection), `Referrer-Policy`, and `Permissions-Policy`.
-6. **Cookie Security & Privacy**: Evaluates `Secure`, `HttpOnly`, and `SameSite` flags. **Zero Raw Cookie Storage**: Cookie values are strictly redacted (`name=REDACTED`) in all logs, database records, and UI displays.
-7. **CORS Configuration**: Evaluates wildcard origins (`*`), credentials combinations (`Access-Control-Allow-Credentials: true`), `null` origins, and arbitrary reflection.
-8. **Information Exposure**: Detects detailed server software banners (`Server: Apache/2.4.52`), `X-Powered-By` runtime disclosures, active framework debug screens/stack traces, and public source map directives.
-9. **Configuration Checks**: RFC 9116 `security.txt` verification, `robots.txt` discovery (marked as standard practice, not a vulnerability), and mixed-content resource detection.
-10. **Explainable Risk Engine & Posture Scoring**: Computes deterministic 0-100 risk scores for findings and calculates overall posture scores with security caps.
+> **Responsible Security Notice**: Sentriq performs safe, authorized, non-destructive security checks (HTTPS/TLS configuration, response headers, cookie flags, CORS policies, information disclosure, repository SAST/SCA/secrets, OpenAPI specifications, and read-only CSPM audits). It does **not** conduct intrusive exploitation, denial of service, or brute force attacks. Users must explicitly confirm target authorization prior to testing.
 
 ---
 
-## Architecture
+## Master Architecture & Capabilities (Phases 1–12 Complete)
+
+Sentriq delivers an end-to-end cybersecurity posture management solution across 12 integrated phases:
+
+1. **Authentication & Identity**:
+   - Secure Argon2id / Bcrypt password hashing, email verification, password reset flows.
+   - Per-device session rotation, CSRF token verification, and generic error responses preventing account enumeration.
+   - GitHub OAuth with atomic one-time state consumption (`OAuthState`) preventing CSRF and replay attacks.
+   - Progressive throttle delay with IP flood bounds preventing denial-of-service victim lockout.
+
+2. **Website Security Scanner**:
+   - SSRF protection layer with DNS resolution and private network blocking (RFC 1918, RFC 3927, loopback, cloud metadata).
+   - Non-destructive HTTPS/TLS assessment, SSL certificate expiration check, hostname mismatch validation.
+   - Comprehensive security headers (`CSP`, `HSTS`, `X-Content-Type-Options`, `X-Frame-Options`, `Permissions-Policy`).
+   - Cookie security validation with **zero raw cookie value leakage** (`name=REDACTED`).
+   - CORS policy analysis (wildcards, credentials reflection, null origins) and information exposure detection.
+
+3. **Project Management & Ownership**:
+   - Cryptographically isolated tenant ownership.
+   - Multi-scan history tracking with cascade deletion preserving user identity.
+   - Target ownership confirmation requirement before scanning.
+
+4. **Finding Lifecycle & Triage Hub**:
+   - Centralized finding repository with multi-dimensional filtering, searching, and sorting.
+   - Optimistic Concurrency Control (OCC) versioning (`version`) preventing race conditions during status triage.
+   - Mandatory justification validation for `accepted_risk` and `false_positive` transitions.
+   - Tamper-evident database audit log (`finding_status_events`) backed by immutability triggers.
+
+5. **Risk Analytics & Scoring Engine**:
+   - Multi-project posture scoring (0–100) with grade tiers (A through F).
+   - Ceiling caps ensuring critical findings cap overall posture.
+   - 6-domain security breakdown and historical posture trend calculations.
+   - Automated project risk ranking based on risk index and critical density.
+
+6. **Repository Security (SAST & SCA)**:
+   - Safe regex/AST secret detection with zero raw credential leakage (all secrets masked as `AKIA****MPLE`).
+   - SAST pattern analyzer detecting OWASP Top 10 vulnerabilities (SQLi, command injection, deserialization, path traversal).
+   - SCA dependency scanner mapping manifest files (`package.json`, `requirements.txt`) against CVE databases.
+
+7. **API Security Assessment**:
+   - OpenAPI 3.0 and Swagger 2.0 parser (JSON & YAML).
+   - Ingests endpoint inventories with authentication scheme analysis.
+   - OWASP API Security Top 10 automated checks (broken object auth, excessive data exposure, rate limit omissions, insecure transport).
+
+8. **Cloud Security Posture (CSPM)**:
+   - Read-only multi-cloud audits against CIS benchmarks for AWS, GCP, and Supabase.
+   - Checks for public S3 buckets, unencrypted disks, root MFA omission, wildcard IAM permissions (`*:*`), stale credentials, open security groups (ports 22, 3389, 5432).
+   - **Demarcation Transparency**: Clear UI badges and API fields distinguishing between simulated CIS baseline audits and live IAM credential audits.
+
+9. **Reports & Pure-Python PDF Engine**:
+   - Pure-Python standard PDF 1.4 document builder (`PurePDFDocument`, `SentriqPdfReportBuilder`) with zero external C-binary dependencies.
+   - Generates downloadable multi-page PDF documents across 8 report types (`executive`, `project`, `vulnerability`, `risk`, `repo`, `api`, `cloud`, `compliance`).
+   - Standalone printable HTML executive report with print stylesheets (`@page`, `@media print`).
+   - Streaming UTF-8 CSV exporter with byte order mark (BOM) for native Excel compatibility.
+   - Comprehensive structured JSON posture bundle mapped to OWASP and CIS benchmarks.
+
+10. **Settings, Session Management & Preferences**:
+    - `UserSettings` model and preferences persistence (`/api/settings/preferences`) for scanner timeout, max redirects, SSL verification toggle, strict headers toggle, and notification flags.
+    - User profile customization and password update with credential validation.
+    - Active device session inspector with IP, user-agent, and last activity timestamp.
+    - Per-device revocation and one-click bulk revocation (`revoke-others`).
+
+11. **Integrations & Alerting**:
+    - Outbound webhook delivery system with strict HTTPS enforcement, SSRF validation, and HMAC-SHA256 signatures (`X-Sentriq-Signature`).
+    - Automated recurring scan scheduler (daily, weekly, monthly) with immediate on-demand execution (`POST /api/integrations/schedules/{id}/run`).
+    - Common Event Format (CEF) SIEM log exporter for Splunk, Datadog, or Microsoft Sentinel.
+
+12. **Enterprise Governance & RBAC**:
+    - Organization workspaces with Role-Based Access Control (`owner`, `admin`, `analyst`, `auditor`).
+    - Sole owner protection rule preventing accidental removal or demotion of the last remaining owner.
+    - Tamper-evident workspace compliance audit logs with PostgreSQL/SQLite immutability triggers.
+
+---
+
+## Complete Documentation Index
+
+For in-depth technical specifications, architectural designs, API contracts, and runbooks:
+
+- [ROADMAP.md](file:///d:/Sentriq/ROADMAP.md) — Master milestone progress, completed phases 1-12, and future v1.1-v2.0 roadmap.
+- [ARCHITECTURE.md](file:///d:/Sentriq/ARCHITECTURE.md) — System topology, Mermaid architecture diagrams, security layers, and Pure-Python PDF engine design.
+- [API_DOCUMENTATION.md](file:///d:/Sentriq/API_DOCUMENTATION.md) — Comprehensive REST API reference across all 13 router modules.
+- [DATABASE_SCHEMA.md](file:///d:/Sentriq/DATABASE_SCHEMA.md) — Complete 25-table database schema, indexes, relationships, and immutability triggers.
+- [SECURITY.md](file:///d:/Sentriq/SECURITY.md) — Application security posture, SSRF defense, Argon2id, session rotation, CSRF, and threat models.
+- [DEPLOYMENT.md](file:///d:/Sentriq/DEPLOYMENT.md) — Production deployment runbook for Vercel, Render, and Supabase PostgreSQL.
+- [ENVIRONMENT_VARIABLES.md](file:///d:/Sentriq/ENVIRONMENT_VARIABLES.md) — Full configuration reference for backend and frontend environments.
+- [TESTING.md](file:///d:/Sentriq/TESTING.md) — Testing guide, test suite breakdown, fixtures, and regression workflows.
+- [CHANGELOG.md](file:///d:/Sentriq/CHANGELOG.md) — Detailed chronological record of all features, fixes, and architectural milestones.
+- [PROJECT_STATUS.md](file:///d:/Sentriq/PROJECT_STATUS.md) — Current implementation matrix and test verification results.
+
+---
+
+## Directory Structure
 
 ```
 Sentriq/
 ├── backend/                              # FastAPI Asynchronous Core
 │   ├── app/
 │   │   ├── api/                          # Modular API Routers
-│   │   │   ├── system.py                 # GET /api/system/health
-│   │   │   ├── projects.py               # POST/GET /api/projects, POST /api/projects/{id}/scans
-│   │   │   ├── scans.py                  # GET /api/scans/{id}, GET /api/scans/{id}/findings, summary
-│   │   │   └── findings.py               # PATCH /api/findings/{id}
-│   │   ├── config.py                     # Pydantic Settings & SSRF safety controls
-│   │   ├── database/                     # SQLAlchemy 2.0 Async Session (SQLite / PostgreSQL)
-│   │   ├── models/                       # Project, Scan, Finding ORM models
+│   │   │   ├── auth.py                   # Authentication, registration, OAuth, sessions
+│   │   │   ├── system.py                 # GET /api/system/health, GET /api/system/info
+│   │   │   ├── projects.py               # Projects CRUD & scan launching
+│   │   │   ├── scans.py                  # Scan status, score, and summary
+│   │   │   ├── findings.py               # Findings Hub, triage, OCC versioning, audit trail
+│   │   │   ├── analytics.py              # Posture trends, project risk rankings
+│   │   │   ├── repositories.py           # SAST, SCA, and secret scanning
+│   │   │   ├── api_security.py           # OpenAPI ingestion & OWASP API Top 10
+│   │   │   ├── cloud_security.py         # Multi-cloud CSPM audits
+│   │   │   ├── reports.py                # Pure-Python PDF, Executive HTML, CSV, JSON
+│   │   │   ├── settings.py               # Profile, password, preferences, sessions
+│   │   │   ├── integrations.py           # Webhooks, schedules, immediate execution, SIEM
+│   │   │   └── workspaces.py             # RBAC organizations & compliance audit logs
+│   │   ├── config.py                     # Pydantic Settings & environment validation
+│   │   ├── database/                     # SQLAlchemy 2.0 Async Session & migrations
+│   │   ├── models/                       # SQLAlchemy declarative models (25 entities)
 │   │   ├── schemas/                      # Pydantic validation schemas
-│   │   ├── risk/                         # Deterministic Risk & Posture Scoring Engine
-│   │   └── scanners/                     # Modular Web Security Scanner
-│   │       └── web/
-│   │           ├── client.py             # Safe, bounded async HTTP client
-│   │           ├── validator.py          # SSRF prevention & URL normalization
-│   │           ├── scanner.py            # Website scanner orchestrator
-│   │           └── checks/               # HTTPS, headers, cookies, cors, exposure, config
-│   └── tests/                            # 23 Automated Async Tests
+│   │   ├── security/                     # Argon2id/Bcrypt hashing, CSRF, IP proxy extraction
+│   │   ├── services/                     # Pure-Python PDF builder & reporting services
+│   │   └── scanners/                     # Security scanner modules
+│   │       ├── web/                      # Non-destructive website security scanner
+│   │       ├── repo/                     # SAST, SCA, and masked secret scanner
+│   │       ├── api_sec/                  # OpenAPI / Swagger analyzer
+│   │       └── cloud/                    # CIS benchmark CSPM analyzer
+│   └── tests/                            # 221 Automated Async Unit & Integration Tests
 │
 ├── frontend/                             # Vite + React 18 + TypeScript Client
 │   ├── src/
-│   │   ├── components/                   # ProjectList, ScanDetailView, FindingDetailModal, Header, Sidebar
-│   │   ├── services/                     # Typed API client for projects, scans, findings
-│   │   ├── types/                        # Project, Scan, Finding TypeScript interfaces
-│   │   └── index.css                     # Dark cybersecurity design system tokens
+│   │   ├── components/                   # Views: Projects, FindingsHub, RiskAnalytics, RepoSecurity,
+│   │   │                                 # ApiSecurity, CloudSecurity, Reports, Settings, Integrations, Workspaces
+│   │   ├── context/                      # AuthContext session & user state management
+│   │   ├── services/                     # Typed API client with friendly HTTP 503 handling
+│   │   ├── types/                        # TypeScript interfaces for all 12 modules
+│   │   ├── utils/                        # Route parsing, finding status math, risk calculators
+│   │   └── index.css                     # Dark cybersecurity design system
+│   └── tests/                            # 98 Automated Frontend Unit Tests
 │
-├── .env.example                          # Environment configuration template
-└── .gitignore                            # Production git ignore rules
+├── API_DOCUMENTATION.md                  # Complete API reference
+├── ARCHITECTURE.md                       # Architecture design & Mermaid diagrams
+├── CHANGELOG.md                          # Release log
+├── DATABASE_SCHEMA.md                    # Database entity dictionary & ER diagrams
+├── DEPLOYMENT.md                         # Vercel / Render / Supabase runbook
+├── ENVIRONMENT_VARIABLES.md              # Environment variables reference
+├── PROJECT_STATUS.md                     # Master implementation progress matrix
+├── ROADMAP.md                            # Milestone roadmap
+├── SECURITY.md                           # Threat model & security protections
+├── TESTING.md                            # Testing guide & execution commands
+├── vercel.json                           # Frontend deployment & reverse-proxy configuration
+└── render.yaml                           # Backend deployment configuration
 ```
 
 ---
 
-## Scoring Models
+## Running the Application Locally
 
-### Finding Risk Score (0–100)
-Every finding is scored deterministically based on base severity weight and confidence factor:
-- **Critical**: 90
-- **High**: 75
-- **Medium**: 55
-- **Low**: 30
-- **Informational**: 10
+### 1. Backend Setup
 
-Formula: `risk_score = round(base_weight * clamp(confidence, 0.1, 1.0))`
-
-### Overall Security Posture Score (0–100)
-Starts at 100 with deductions:
-- Each Critical finding: `-25` pts
-- Each High finding: `-15` pts
-- Each Medium finding: `-8` pts
-- Each Low finding: `-3` pts
-- Each Informational finding: `-1` pt (capped at 5 pts)
-
-**Ceiling Caps**:
-- If any Critical finding exists: Maximum posture score is capped at `49` ("Poor").
-- If any High finding exists: Maximum posture score is capped at `74` ("Needs Improvement").
-
-**Grade Tiers**:
-- `90 - 100`: Excellent
-- `75 - 89`: Good
-- `50 - 74`: Needs Improvement
-- `25 - 49`: Poor
-- `0 - 24`: Critical
-
----
-
-## API Endpoints (Phase 2)
-
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/system/health` | Canonical system health & DB probe (`SELECT 1`) |
-| `POST` | `/api/projects` | Create authorized project target (`authorization_confirmed` required) |
-| `GET` | `/api/projects` | List projects with latest scan previews |
-| `GET` | `/api/projects/{id}` | Get project detail and scan history |
-| `POST` | `/api/projects/{id}/scans` | Launch safe background assessment scan |
-| `GET` | `/api/scans/{id}` | Get scan status, score, grade, and counters |
-| `GET` | `/api/scans/{id}/findings` | Get normalized findings sorted by risk score |
-| `GET` | `/api/scans/{id}/summary` | Get severity & category breakdown with top risks |
-| `PATCH` | `/api/findings/{id}` | Update status (`open`, `in_progress`, `resolved`, `false_positive`) |
-
----
-
-## Running the Application
-
-### 1. Setup Environment
-```bash
-cp .env.example .env
-```
-
-### 2. Run Backend
-```bash
-# Activate virtual environment
+```powershell
+# Activate python virtual environment
 .\.venv\Scripts\activate   # Windows (or source .venv/bin/activate on Linux/macOS)
 
-# Run test suite (23 tests)
-python -m pytest backend/tests -v
+# Run full backend test suite (221 tests)
+pytest backend/tests -v
 
-# Start FastAPI server
-uvicorn app.main:app --app-dir backend --reload --port 8000
+# Start FastAPI server on port 8000
+uvicorn backend.app.main:app --reload --port 8000
 ```
 
-### 3. Run Frontend
-```bash
+### 2. Frontend Setup
+
+```powershell
+# Navigate to frontend
 cd frontend
+
+# Install dependencies
 npm install
-npm run build   # Type-check and production build
-npm run dev     # Starts dev server on port 5173
+
+# Run full frontend unit test suite (98 tests)
+npm test
+
+# Build production bundle (TypeScript verification + Vite bundle)
+npm run build
+
+# Start frontend development server on port 5173
+npm run dev
 ```
 
 ---
 
-## Phase 3.3 Security Hardening & Architecture Policy
+## Verification & Test Results
 
-Sentriq incorporates defense-in-depth controls adhering strictly to OWASP guidelines:
-
-1. **GitHub OAuth Replay Protection**: Server-side one-time state consumption (`OAuthState` model) with cryptographic SHA-256 state hashing and atomic SQL updates. Expired, tampered, already-used, and concurrent replay attempts are strictly rejected.
-2. **Safer Login Rate Limiting**: Eliminated 24-hour account lockout behavior to prevent Denial-of-Service (DoS) abuse. Implemented progressive temporary throttling with bounded limits, generic error messaging, and dummy Argon2id password verification for non-existent users.
-3. **Session Lifecycle & Rotation**: Per-client session rotation on login revokes previous tokens on the same device while preserving unrelated sessions on other devices. Strict rejection of expired and revoked sessions.
-4. **Production Architecture**: Production authentication is gated until unified same-site or same-origin domain routing is configured. Cookie flags (`SameSite=Lax`, `HttpOnly`, `Secure`) and anti-CSRF protections are strictly preserved without cross-site compromises. See [Production Auth Architecture](docs/architecture/production_auth.md) for full deployment details.
-
----
-
-## Incremental Roadmap
-
-- [x] **Phase 1: Project Foundation** — FastAPI backend, React/Vite/TS frontend, SQLite/PostgreSQL async engine, canonical health endpoint.
-- [x] **Phase 2: Website Security Scanner** — Authorized targets, non-destructive checks (HTTPS/TLS, headers, cookies, CORS, exposure), finding normalization & risk engine.
-- [ ] **Phase 3: Authentication & GitHub OAuth**
-  - [x] Phase 3.1: Security Core & Cryptographic Primitives
-  - [x] Phase 3.2: Database Persistence & User Models
-  - [x] Phase 3.3: Authentication APIs & Security Hardening
-  - [ ] Phase 3.4: Multi-Tenant Project Isolation (Upcoming)
-- [ ] **Phase 4: Finding Normalization Hub** — Universal finding management.
-- [ ] **Phase 5: Advanced Risk Correlation** — Multi-dimensional asset weighting and posture tracking.
-- [ ] **Phase 6: Repository Security Analysis** — Semgrep CE, Gitleaks, OSV.dev dependency scanning.
-- [ ] **Phase 7: Security Dashboard & Regression Detection** — Historical scans comparison.
-- [ ] **Phase 8: AI Security Analyst** — Evidence-grounded explanations with deterministic fallback.
-- [ ] **Phase 9: PDF Security Reporting** — Open-source report generation.
-- [ ] **Phase 10: Production Deployment** — Vercel + Render + Supabase.
-
+- **Backend Test Suite**: **221 passed, 0 failed** (`pytest backend/tests -v`)
+- **Frontend Test Suite**: **98 passed, 0 failed** (`npm --prefix frontend test`)
+- **Frontend Production Build**: **Clean build with 0 TypeScript errors** (`tsc -b && vite build`)
+- **Security Compliance**:
+  - `AUTH_ENABLED=false` and `PRODUCTION_AUTH_VERIFIED=false` held for safe pre-production staging.
+  - Mandatory justification on high-impact triage actions.
+  - Zero raw credential or secret storage.
+  - Private network SSRF fail-closed boundaries.

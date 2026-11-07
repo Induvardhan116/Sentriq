@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test": "node --experimental-strip-types --test src/utils/routing.test.ts src/services/api.test.ts src/utils/findingStatus.test.ts src/components/ScanDetailView.test.ts src/components/ProjectManagement.test.ts",
+    "test": "node --experimental-strip-types --test src/utils/routing.test.ts src/services/api.test.ts src/utils/findingStatus.test.ts src/components/ScanDetailView.test.ts src/components/ProjectManagement.test.ts src/context/AuthContext.test.ts src/components/FindingsHubView.test.ts src/components/RiskAnalyticsView.test.ts src/components/RepoSecurityView.test.ts src/components/ApiSecurityView.test.ts src/components/CloudSecurityView.test.ts src/components/ReportsView.test.ts src/components/SettingsView.test.ts src/components/IntegrationsView.test.ts src/components/WorkspacesView.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

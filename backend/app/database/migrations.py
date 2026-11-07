@@ -19,7 +19,7 @@ SQLITE_TRIGGER_PROTECT_UPDATE = """
 CREATE TRIGGER IF NOT EXISTS trg_audit_events_protect_update
 BEFORE UPDATE ON finding_status_events
 WHEN NOT (
-    OLD.user_id IS NOT NULL 
+    OLD.user_id IS NOT NULL
     AND NEW.user_id IS NULL
     AND OLD.id = NEW.id
     AND OLD.finding_id = NEW.finding_id
@@ -62,7 +62,7 @@ $$;
 
 PG_FUNCTION_AUDIT_PROTECT_UPDATE = """
 CREATE OR REPLACE FUNCTION trg_enforce_audit_immutability()
-RETURNS TRIGGER 
+RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public, pg_temp
@@ -487,5 +487,573 @@ def run_migrations(connection) -> None:
         """))
         connection.execute(text(PG_FUNCTION_ANONYMIZE_USER))
         connection.execute(text(PG_RESTRICTED_PRIVILEGES))
+
+    # 11. Phase 6: Repositories and Code Security Tables
+    if "repositories" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS repositories (
+                    id VARCHAR(36) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    full_name VARCHAR(255) NOT NULL,
+                    clone_url VARCHAR(1024) NOT NULL,
+                    default_branch VARCHAR(64) NOT NULL DEFAULT 'main',
+                    languages VARCHAR(512),
+                    is_private BOOLEAN NOT NULL DEFAULT 0,
+                    authorization_confirmed BOOLEAN NOT NULL DEFAULT 1,
+                    owner_id VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
+                    last_scanned_at TIMESTAMP,
+                    latest_posture_score INTEGER NOT NULL DEFAULT 100,
+                    latest_risk_score INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS repositories (
+                    id VARCHAR(36) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    full_name VARCHAR(255) NOT NULL,
+                    clone_url VARCHAR(1024) NOT NULL,
+                    default_branch VARCHAR(64) NOT NULL DEFAULT 'main',
+                    languages VARCHAR(512),
+                    is_private BOOLEAN NOT NULL DEFAULT FALSE,
+                    authorization_confirmed BOOLEAN NOT NULL DEFAULT TRUE,
+                    owner_id VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
+                    last_scanned_at TIMESTAMPTZ,
+                    latest_posture_score INTEGER NOT NULL DEFAULT 100,
+                    latest_risk_score INTEGER NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    if "repo_scans" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS repo_scans (
+                    id VARCHAR(36) PRIMARY KEY,
+                    repository_id VARCHAR(36) NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+                    branch VARCHAR(64) NOT NULL DEFAULT 'main',
+                    commit_hash VARCHAR(64),
+                    status VARCHAR(32) NOT NULL DEFAULT 'queued',
+                    started_at TIMESTAMP,
+                    completed_at TIMESTAMP,
+                    posture_score INTEGER NOT NULL DEFAULT 100,
+                    findings_count INTEGER NOT NULL DEFAULT 0,
+                    secret_count INTEGER NOT NULL DEFAULT 0,
+                    sast_count INTEGER NOT NULL DEFAULT 0,
+                    sca_count INTEGER NOT NULL DEFAULT 0,
+                    critical_count INTEGER NOT NULL DEFAULT 0,
+                    high_count INTEGER NOT NULL DEFAULT 0,
+                    medium_count INTEGER NOT NULL DEFAULT 0,
+                    low_count INTEGER NOT NULL DEFAULT 0,
+                    error_message TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS repo_scans (
+                    id VARCHAR(36) PRIMARY KEY,
+                    repository_id VARCHAR(36) NOT NULL REFERENCES repositories(id) ON DELETE CASCADE,
+                    branch VARCHAR(64) NOT NULL DEFAULT 'main',
+                    commit_hash VARCHAR(64),
+                    status VARCHAR(32) NOT NULL DEFAULT 'queued',
+                    started_at TIMESTAMPTZ,
+                    completed_at TIMESTAMPTZ,
+                    posture_score INTEGER NOT NULL DEFAULT 100,
+                    findings_count INTEGER NOT NULL DEFAULT 0,
+                    secret_count INTEGER NOT NULL DEFAULT 0,
+                    sast_count INTEGER NOT NULL DEFAULT 0,
+                    sca_count INTEGER NOT NULL DEFAULT 0,
+                    critical_count INTEGER NOT NULL DEFAULT 0,
+                    high_count INTEGER NOT NULL DEFAULT 0,
+                    medium_count INTEGER NOT NULL DEFAULT 0,
+                    low_count INTEGER NOT NULL DEFAULT 0,
+                    error_message TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    if "repo_findings" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS repo_findings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    scan_id VARCHAR(36) NOT NULL REFERENCES repo_scans(id) ON DELETE CASCADE,
+                    scan_type VARCHAR(32) NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT NOT NULL,
+                    severity VARCHAR(32) NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    risk_score INTEGER NOT NULL DEFAULT 50,
+                    file_path VARCHAR(1024) NOT NULL,
+                    line_number INTEGER,
+                    rule_id VARCHAR(128) NOT NULL,
+                    cwe VARCHAR(64),
+                    cve VARCHAR(64),
+                    snippet TEXT,
+                    remediation TEXT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'open',
+                    justification TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS repo_findings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    scan_id VARCHAR(36) NOT NULL REFERENCES repo_scans(id) ON DELETE CASCADE,
+                    scan_type VARCHAR(32) NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT NOT NULL,
+                    severity VARCHAR(32) NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    risk_score INTEGER NOT NULL DEFAULT 50,
+                    file_path VARCHAR(1024) NOT NULL,
+                    line_number INTEGER,
+                    rule_id VARCHAR(128) NOT NULL,
+                    cwe VARCHAR(64),
+                    cve VARCHAR(64),
+                    snippet TEXT,
+                    remediation TEXT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'open',
+                    justification TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_repositories_owner_id ON repositories(owner_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_repo_scans_repository_id ON repo_scans(repository_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_repo_scans_status ON repo_scans(status)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_repo_findings_scan_id ON repo_findings(scan_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_repo_findings_scan_type ON repo_findings(scan_type)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_repo_findings_severity ON repo_findings(severity)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_repo_findings_status ON repo_findings(status)"))
+
+    # 12. Phase 7: API Security Tables
+    if "api_specs" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS api_specs (
+                    id VARCHAR(36) PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    version VARCHAR(64) NOT NULL DEFAULT '1.0.0',
+                    description TEXT,
+                    base_url VARCHAR(1024),
+                    spec_format VARCHAR(32) NOT NULL DEFAULT 'openapi_3',
+                    raw_spec TEXT NOT NULL,
+                    endpoint_count INTEGER NOT NULL DEFAULT 0,
+                    posture_score INTEGER NOT NULL DEFAULT 100,
+                    risk_score INTEGER NOT NULL DEFAULT 0,
+                    last_scanned_at TIMESTAMP,
+                    owner_id VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS api_specs (
+                    id VARCHAR(36) PRIMARY KEY,
+                    title VARCHAR(255) NOT NULL,
+                    version VARCHAR(64) NOT NULL DEFAULT '1.0.0',
+                    description TEXT,
+                    base_url VARCHAR(1024),
+                    spec_format VARCHAR(32) NOT NULL DEFAULT 'openapi_3',
+                    raw_spec TEXT NOT NULL,
+                    endpoint_count INTEGER NOT NULL DEFAULT 0,
+                    posture_score INTEGER NOT NULL DEFAULT 100,
+                    risk_score INTEGER NOT NULL DEFAULT 0,
+                    last_scanned_at TIMESTAMPTZ,
+                    owner_id VARCHAR(36) REFERENCES users(id) ON DELETE SET NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    if "api_endpoints" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS api_endpoints (
+                    id VARCHAR(36) PRIMARY KEY,
+                    spec_id VARCHAR(36) NOT NULL REFERENCES api_specs(id) ON DELETE CASCADE,
+                    path VARCHAR(1024) NOT NULL,
+                    method VARCHAR(16) NOT NULL,
+                    summary VARCHAR(255),
+                    auth_required BOOLEAN NOT NULL DEFAULT 0,
+                    auth_type VARCHAR(64) NOT NULL DEFAULT 'none',
+                    parameters_count INTEGER NOT NULL DEFAULT 0,
+                    has_request_body BOOLEAN NOT NULL DEFAULT 0,
+                    tags VARCHAR(255),
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS api_endpoints (
+                    id VARCHAR(36) PRIMARY KEY,
+                    spec_id VARCHAR(36) NOT NULL REFERENCES api_specs(id) ON DELETE CASCADE,
+                    path VARCHAR(1024) NOT NULL,
+                    method VARCHAR(16) NOT NULL,
+                    summary VARCHAR(255),
+                    auth_required BOOLEAN NOT NULL DEFAULT FALSE,
+                    auth_type VARCHAR(64) NOT NULL DEFAULT 'none',
+                    parameters_count INTEGER NOT NULL DEFAULT 0,
+                    has_request_body BOOLEAN NOT NULL DEFAULT FALSE,
+                    tags VARCHAR(255),
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    if "api_findings" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS api_findings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    spec_id VARCHAR(36) NOT NULL REFERENCES api_specs(id) ON DELETE CASCADE,
+                    endpoint_id VARCHAR(36),
+                    path VARCHAR(1024),
+                    method VARCHAR(16),
+                    owasp_category VARCHAR(64) NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT NOT NULL,
+                    severity VARCHAR(32) NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    risk_score INTEGER NOT NULL DEFAULT 50,
+                    remediation TEXT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'open',
+                    justification TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS api_findings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    spec_id VARCHAR(36) NOT NULL REFERENCES api_specs(id) ON DELETE CASCADE,
+                    endpoint_id VARCHAR(36),
+                    path VARCHAR(1024),
+                    method VARCHAR(16),
+                    owasp_category VARCHAR(64) NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT NOT NULL,
+                    severity VARCHAR(32) NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    risk_score INTEGER NOT NULL DEFAULT 50,
+                    remediation TEXT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'open',
+                    justification TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_specs_owner_id ON api_specs(owner_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_endpoints_spec_id ON api_endpoints(spec_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_endpoints_path ON api_endpoints(path)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_endpoints_method ON api_endpoints(method)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_findings_spec_id ON api_findings(spec_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_findings_owasp_category ON api_findings(owasp_category)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_findings_severity ON api_findings(severity)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_api_findings_status ON api_findings(status)"))
+
+    if "cloud_accounts" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS cloud_accounts (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE,
+                    provider VARCHAR(32) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    account_identifier VARCHAR(128) NOT NULL,
+                    role_arn_or_ref VARCHAR(255) NOT NULL,
+                    region VARCHAR(64) NOT NULL DEFAULT 'us-east-1',
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    posture_score INTEGER NOT NULL DEFAULT 100,
+                    risk_score INTEGER NOT NULL DEFAULT 0,
+                    last_scanned_at TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS cloud_accounts (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE,
+                    provider VARCHAR(32) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    account_identifier VARCHAR(128) NOT NULL,
+                    role_arn_or_ref VARCHAR(255) NOT NULL,
+                    region VARCHAR(64) NOT NULL DEFAULT 'us-east-1',
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    posture_score INTEGER NOT NULL DEFAULT 100,
+                    risk_score INTEGER NOT NULL DEFAULT 0,
+                    last_scanned_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    if "cloud_findings" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS cloud_findings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    account_id VARCHAR(36) NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+                    service VARCHAR(64) NOT NULL,
+                    resource_id VARCHAR(255) NOT NULL,
+                    resource_type VARCHAR(64) NOT NULL,
+                    benchmark_ref VARCHAR(64) NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT NOT NULL,
+                    severity VARCHAR(32) NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    risk_score INTEGER NOT NULL DEFAULT 50,
+                    remediation TEXT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'open',
+                    justification TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS cloud_findings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    account_id VARCHAR(36) NOT NULL REFERENCES cloud_accounts(id) ON DELETE CASCADE,
+                    service VARCHAR(64) NOT NULL,
+                    resource_id VARCHAR(255) NOT NULL,
+                    resource_type VARCHAR(64) NOT NULL,
+                    benchmark_ref VARCHAR(64) NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    description TEXT NOT NULL,
+                    severity VARCHAR(32) NOT NULL,
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    risk_score INTEGER NOT NULL DEFAULT 50,
+                    remediation TEXT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'open',
+                    justification TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_cloud_accounts_user_id ON cloud_accounts(user_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_cloud_accounts_provider ON cloud_accounts(provider)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_cloud_findings_account_id ON cloud_findings(account_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_cloud_findings_service ON cloud_findings(service)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_cloud_findings_benchmark_ref ON cloud_findings(benchmark_ref)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_cloud_findings_severity ON cloud_findings(severity)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_cloud_findings_status ON cloud_findings(status)"))
+
+    if "webhook_endpoints" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS webhook_endpoints (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE,
+                    name VARCHAR(255) NOT NULL,
+                    target_url VARCHAR(1024) NOT NULL,
+                    secret_token VARCHAR(255) NOT NULL,
+                    event_types VARCHAR(255) NOT NULL DEFAULT 'scan.completed,finding.critical,posture.degraded',
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    last_dispatched_at TIMESTAMP,
+                    last_status_code INTEGER,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS webhook_endpoints (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE,
+                    name VARCHAR(255) NOT NULL,
+                    target_url VARCHAR(1024) NOT NULL,
+                    secret_token VARCHAR(255) NOT NULL,
+                    event_types VARCHAR(255) NOT NULL DEFAULT 'scan.completed,finding.critical,posture.degraded',
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    last_dispatched_at TIMESTAMPTZ,
+                    last_status_code INTEGER,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    if "scan_schedules" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS scan_schedules (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE,
+                    target_type VARCHAR(32) NOT NULL,
+                    target_id VARCHAR(36) NOT NULL,
+                    target_name VARCHAR(255) NOT NULL,
+                    frequency VARCHAR(32) NOT NULL DEFAULT 'weekly',
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    last_run_at TIMESTAMP,
+                    next_run_at TIMESTAMP,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS scan_schedules (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE,
+                    target_type VARCHAR(32) NOT NULL,
+                    target_id VARCHAR(36) NOT NULL,
+                    target_name VARCHAR(255) NOT NULL,
+                    frequency VARCHAR(32) NOT NULL DEFAULT 'weekly',
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    last_run_at TIMESTAMPTZ,
+                    next_run_at TIMESTAMPTZ,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_webhook_endpoints_user_id ON webhook_endpoints(user_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_scan_schedules_user_id ON scan_schedules(user_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_scan_schedules_target_id ON scan_schedules(target_id)"))
+
+    if "workspaces" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS workspaces (
+                    id VARCHAR(36) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    slug VARCHAR(128) UNIQUE NOT NULL,
+                    owner_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS workspaces (
+                    id VARCHAR(36) PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    slug VARCHAR(128) UNIQUE NOT NULL,
+                    owner_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    if "workspace_members" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS workspace_members (
+                    id VARCHAR(36) PRIMARY KEY,
+                    workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role VARCHAR(32) NOT NULL DEFAULT 'analyst',
+                    joined_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_workspace_member UNIQUE (workspace_id, user_id)
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS workspace_members (
+                    id VARCHAR(36) PRIMARY KEY,
+                    workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    user_id VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role VARCHAR(32) NOT NULL DEFAULT 'analyst',
+                    joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_workspace_member UNIQUE (workspace_id, user_id)
+                )
+            """))
+
+    if "workspace_audit_logs" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS workspace_audit_logs (
+                    id VARCHAR(36) PRIMARY KEY,
+                    workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    actor_id VARCHAR(36) NOT NULL,
+                    actor_email VARCHAR(255) NOT NULL,
+                    action VARCHAR(64) NOT NULL,
+                    resource_type VARCHAR(64) NOT NULL,
+                    resource_id VARCHAR(36),
+                    details TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS workspace_audit_logs (
+                    id VARCHAR(36) PRIMARY KEY,
+                    workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+                    actor_id VARCHAR(36) NOT NULL,
+                    actor_email VARCHAR(255) NOT NULL,
+                    action VARCHAR(64) NOT NULL,
+                    resource_type VARCHAR(64) NOT NULL,
+                    resource_id VARCHAR(36),
+                    details TEXT,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    if "user_settings" not in tables:
+        if dialect_name == "sqlite":
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    scanner_timeout_seconds INTEGER NOT NULL DEFAULT 30,
+                    scanner_max_redirects INTEGER NOT NULL DEFAULT 5,
+                    scanner_verify_ssl BOOLEAN NOT NULL DEFAULT 1,
+                    scanner_strict_headers BOOLEAN NOT NULL DEFAULT 1,
+                    notify_email_scan_completed BOOLEAN NOT NULL DEFAULT 1,
+                    notify_email_critical_finding BOOLEAN NOT NULL DEFAULT 1,
+                    notify_webhook_enabled BOOLEAN NOT NULL DEFAULT 1,
+                    default_scan_cadence VARCHAR(32) NOT NULL DEFAULT 'weekly',
+                    theme VARCHAR(32) NOT NULL DEFAULT 'dark',
+                    session_timeout_minutes INTEGER NOT NULL DEFAULT 10080,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        else:
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(36) NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    scanner_timeout_seconds INTEGER NOT NULL DEFAULT 30,
+                    scanner_max_redirects INTEGER NOT NULL DEFAULT 5,
+                    scanner_verify_ssl BOOLEAN NOT NULL DEFAULT TRUE,
+                    scanner_strict_headers BOOLEAN NOT NULL DEFAULT TRUE,
+                    notify_email_scan_completed BOOLEAN NOT NULL DEFAULT TRUE,
+                    notify_email_critical_finding BOOLEAN NOT NULL DEFAULT TRUE,
+                    notify_webhook_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    default_scan_cadence VARCHAR(32) NOT NULL DEFAULT 'weekly',
+                    theme VARCHAR(32) NOT NULL DEFAULT 'dark',
+                    session_timeout_minutes INTEGER NOT NULL DEFAULT 10080,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_user_settings_user_id ON user_settings(user_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_workspaces_owner_id ON workspaces(owner_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_workspaces_slug ON workspaces(slug)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_workspace_members_workspace_id ON workspace_members(workspace_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_workspace_members_user_id ON workspace_members(user_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_workspace_audit_logs_workspace_id ON workspace_audit_logs(workspace_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_workspace_audit_logs_actor_id ON workspace_audit_logs(actor_id)"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_workspace_audit_logs_action ON workspace_audit_logs(action)"))
 
     logger.info("Database schema migrations completed successfully.")

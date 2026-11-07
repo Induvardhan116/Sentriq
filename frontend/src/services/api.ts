@@ -10,6 +10,55 @@ import type {
   FindingFilterParams,
 } from '../types/finding';
 import type { User, LoginPayload, RegisterPayload, ProfileUpdatePayload, AuthResponse } from '../types/auth';
+import type {
+  RiskSummaryResponse,
+  PostureTrendsResponse,
+  ProjectRankingsResponse,
+} from '../types/analytics';
+import type {
+  Repository,
+  RepoScan,
+  RepoFinding,
+  RepositoryCreate,
+  RepoFindingStatusUpdate,
+} from '../types/repository';
+import type {
+  ApiSpec,
+  ApiEndpoint,
+  ApiFinding,
+  ApiSpecImportPayload,
+  ApiFindingStatusUpdate,
+} from '../types/apiSecurity';
+import type {
+  CloudAccount,
+  CloudFinding,
+  CloudAccountCreate,
+  CloudFindingStatusUpdate,
+} from '../types/cloudSecurity';
+import type { ReportSummaryResponse } from '../types/report';
+import type {
+  UserProfileResponse,
+  UserSessionItem,
+  PasswordChangePayload,
+  UserSettingsResponse,
+  UserSettingsUpdatePayload,
+} from '../types/settings';
+import type {
+  WebhookEndpoint,
+  WebhookCreatePayload,
+  WebhookTestResult,
+  ScanSchedule,
+  ScanScheduleCreatePayload,
+  SiemLogItem,
+} from '../types/integration';
+import type {
+  Workspace,
+  WorkspaceMember,
+  WorkspaceAuditLog,
+  WorkspaceCreatePayload,
+  WorkspaceInvitePayload,
+  WorkspaceRole,
+} from '../types/workspace';
 
 /**
  * Same-Origin API Architecture:
@@ -100,6 +149,9 @@ export async function authRegister(payload: RegisterPayload): Promise<AuthRespon
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
+    if (res.status === 503) {
+      throw new Error('Authentication is temporarily unavailable. Please try again later.');
+    }
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `Registration failed (${res.statusText})`);
   }
@@ -117,6 +169,9 @@ export async function authLogin(payload: LoginPayload): Promise<AuthResponse> {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
+    if (res.status === 503) {
+      throw new Error('Authentication is temporarily unavailable. Please try again later.');
+    }
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `Login failed (${res.statusText})`);
   }
@@ -438,6 +493,644 @@ export async function claimProject(projectId: string): Promise<Project> {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `Failed to claim project: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// =====================================================================
+// Phase 5: Deep Risk Analytics API Endpoints
+// =====================================================================
+
+export async function fetchRiskSummary(projectId?: string): Promise<RiskSummaryResponse> {
+  const url = projectId ? `/api/analytics/risk-summary?project_id=${encodeURIComponent(projectId)}` : '/api/analytics/risk-summary';
+  const res = await secureFetch(apiUrl(url));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch risk summary: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchPostureTrends(params?: { project_id?: string; days?: number }): Promise<PostureTrendsResponse> {
+  const query = new URLSearchParams();
+  if (params?.project_id) query.set('project_id', params.project_id);
+  if (params?.days !== undefined) query.set('days', String(params.days));
+  const qs = query.toString();
+  const url = qs ? `/api/analytics/posture-trends?${qs}` : '/api/analytics/posture-trends';
+  const res = await secureFetch(apiUrl(url));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch posture trends: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchProjectRankings(limit = 50): Promise<ProjectRankingsResponse> {
+  const res = await secureFetch(apiUrl(`/api/analytics/project-rankings?limit=${limit}`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch project rankings: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// =====================================================================
+// Phase 6: Code Repository Security API Endpoints
+// =====================================================================
+
+export async function fetchRepositories(): Promise<Repository[]> {
+  const res = await secureFetch(apiUrl('/api/repositories'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch repositories: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function createRepository(payload: RepositoryCreate): Promise<Repository> {
+  const res = await secureFetch(apiUrl('/api/repositories'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to register repository: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchRepository(repoId: string): Promise<Repository> {
+  const res = await secureFetch(apiUrl(`/api/repositories/${repoId}`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch repository: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteRepository(repoId: string): Promise<{ success: boolean; message: string }> {
+  const res = await secureFetch(apiUrl(`/api/repositories/${repoId}`), {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to delete repository: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function triggerRepoScan(
+  repoId: string,
+  files?: Record<string, string>,
+  branch = 'main'
+): Promise<RepoScan> {
+  const res = await secureFetch(apiUrl(`/api/repositories/${repoId}/scan?branch=${encodeURIComponent(branch)}`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(files || {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to execute repository scan: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchRepoScans(repoId: string): Promise<RepoScan[]> {
+  const res = await secureFetch(apiUrl(`/api/repositories/${repoId}/scans`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch repository scans: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchRepoFindings(
+  repoId: string,
+  params?: { scan_type?: string; severity?: string; status?: string }
+): Promise<RepoFinding[]> {
+  const query = new URLSearchParams();
+  if (params?.scan_type) query.set('scan_type', params.scan_type);
+  if (params?.severity) query.set('severity', params.severity);
+  if (params?.status) query.set('status', params.status);
+  const qs = query.toString();
+  const url = qs ? `/api/repositories/${repoId}/findings?${qs}` : `/api/repositories/${repoId}/findings`;
+  const res = await secureFetch(apiUrl(url));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch repository findings: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function updateRepoFindingStatus(
+  findingId: string,
+  payload: RepoFindingStatusUpdate
+): Promise<RepoFinding> {
+  const res = await secureFetch(apiUrl(`/api/repositories/findings/${findingId}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to update finding status: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------
+// Phase 7: API Security Assessment
+// ---------------------------------------------------------
+
+export async function importApiSpec(payload: ApiSpecImportPayload): Promise<ApiSpec> {
+  const res = await secureFetch(apiUrl('/api/api-security/specs'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to import API specification: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchApiSpecs(): Promise<ApiSpec[]> {
+  const res = await secureFetch(apiUrl('/api/api-security/specs'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch API specs: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchApiSpec(specId: string): Promise<ApiSpec> {
+  const res = await secureFetch(apiUrl(`/api/api-security/specs/${specId}`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch API spec: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteApiSpec(specId: string): Promise<void> {
+  const res = await secureFetch(apiUrl(`/api/api-security/specs/${specId}`), {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to delete API spec: ${res.statusText}`);
+  }
+}
+
+export async function fetchApiEndpoints(specId: string): Promise<ApiEndpoint[]> {
+  const res = await secureFetch(apiUrl(`/api/api-security/specs/${specId}/endpoints`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch API endpoints: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchApiFindings(
+  specId: string,
+  params?: { severity?: string; status?: string }
+): Promise<ApiFinding[]> {
+  const query = new URLSearchParams();
+  if (params?.severity) query.set('severity', params.severity);
+  if (params?.status) query.set('status', params.status);
+  const qs = query.toString();
+  const url = qs ? `/api/api-security/specs/${specId}/findings?${qs}` : `/api/api-security/specs/${specId}/findings`;
+  const res = await secureFetch(apiUrl(url));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch API findings: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function updateApiFindingStatus(
+  findingId: string,
+  payload: ApiFindingStatusUpdate
+): Promise<ApiFinding> {
+  const res = await secureFetch(apiUrl(`/api/api-security/findings/${findingId}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to update API finding status: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------
+// Phase 8: Cloud Security Posture (CSPM)
+// ---------------------------------------------------------
+
+export async function createCloudAccount(payload: CloudAccountCreate): Promise<CloudAccount> {
+  const res = await secureFetch(apiUrl('/api/cloud-security/accounts'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to connect cloud account: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchCloudAccounts(): Promise<CloudAccount[]> {
+  const res = await secureFetch(apiUrl('/api/cloud-security/accounts'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch cloud accounts: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchCloudAccount(accountId: string): Promise<CloudAccount> {
+  const res = await secureFetch(apiUrl(`/api/cloud-security/accounts/${accountId}`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch cloud account: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteCloudAccount(accountId: string): Promise<void> {
+  const res = await secureFetch(apiUrl(`/api/cloud-security/accounts/${accountId}`), {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to delete cloud account: ${res.statusText}`);
+  }
+}
+
+export async function scanCloudAccount(accountId: string, configData?: Record<string, unknown>): Promise<CloudAccount> {
+  const res = await secureFetch(apiUrl(`/api/cloud-security/accounts/${accountId}/scan`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ config_data: configData || null }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to scan cloud account: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchCloudFindings(
+  accountId: string,
+  params?: { service?: string; severity?: string; status?: string }
+): Promise<CloudFinding[]> {
+  const query = new URLSearchParams();
+  if (params?.service) query.set('service', params.service);
+  if (params?.severity) query.set('severity', params.severity);
+  if (params?.status) query.set('status', params.status);
+  const qs = query.toString();
+  const url = qs ? `/api/cloud-security/accounts/${accountId}/findings?${qs}` : `/api/cloud-security/accounts/${accountId}/findings`;
+  const res = await secureFetch(apiUrl(url));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch cloud findings: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function updateCloudFindingStatus(
+  findingId: string,
+  payload: CloudFindingStatusUpdate
+): Promise<CloudFinding> {
+  const res = await secureFetch(apiUrl(`/api/cloud-security/findings/${findingId}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to update cloud finding status: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------
+// Phase 9: Reports and Export Engine
+// ---------------------------------------------------------
+
+export async function fetchReportSummary(): Promise<ReportSummaryResponse> {
+  const res = await secureFetch(apiUrl('/api/reports/summary'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch report summary: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export function getExecutiveReportUrl(): string {
+  return apiUrl('/api/reports/executive');
+}
+
+export function getPdfExportUrl(reportType: string = 'executive'): string {
+  return apiUrl(`/api/reports/export/pdf?report_type=${encodeURIComponent(reportType)}`);
+}
+
+export function getFindingsCsvExportUrl(): string {
+  return apiUrl('/api/reports/export/csv');
+}
+
+export function getPostureJsonExportUrl(): string {
+  return apiUrl('/api/reports/export/json');
+}
+
+// ---------------------------------------------------------
+// Phase 10: Settings & Session Management
+// ---------------------------------------------------------
+
+export async function fetchProfile(): Promise<UserProfileResponse> {
+  const res = await secureFetch(apiUrl('/api/settings/profile'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch user profile: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function updateProfile(payload: { full_name: string }): Promise<UserProfileResponse> {
+  const res = await secureFetch(apiUrl('/api/settings/profile'), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to update user profile: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function changePassword(payload: PasswordChangePayload): Promise<{ message: string }> {
+  const res = await secureFetch(apiUrl('/api/settings/password'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to change password: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchActiveSessions(): Promise<UserSessionItem[]> {
+  const res = await secureFetch(apiUrl('/api/settings/sessions'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch active sessions: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function revokeSession(sessionId: string): Promise<{ message: string }> {
+  const res = await secureFetch(apiUrl(`/api/settings/sessions/${sessionId}`), {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to revoke session: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function revokeOtherSessions(): Promise<{ message: string; revoked_count: number }> {
+  const res = await secureFetch(apiUrl('/api/settings/sessions/revoke-others'), {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to revoke other sessions: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchUserPreferences(): Promise<UserSettingsResponse> {
+  const res = await secureFetch(apiUrl('/api/settings/preferences'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch preferences: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function updateUserPreferences(payload: UserSettingsUpdatePayload): Promise<UserSettingsResponse> {
+  const res = await secureFetch(apiUrl('/api/settings/preferences'), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to update preferences: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------
+// Phase 11: Integrations and Automation
+// ---------------------------------------------------------
+
+export async function fetchWebhooks(): Promise<WebhookEndpoint[]> {
+  const res = await secureFetch(apiUrl('/api/integrations/webhooks'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch webhooks: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function createWebhook(payload: WebhookCreatePayload): Promise<WebhookEndpoint> {
+  const res = await secureFetch(apiUrl('/api/integrations/webhooks'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to create webhook: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteWebhook(webhookId: string): Promise<void> {
+  const res = await secureFetch(apiUrl(`/api/integrations/webhooks/${webhookId}`), {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to delete webhook: ${res.statusText}`);
+  }
+}
+
+export async function testWebhook(webhookId: string): Promise<WebhookTestResult> {
+  const res = await secureFetch(apiUrl(`/api/integrations/webhooks/${webhookId}/test`), {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to test webhook: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchSchedules(): Promise<ScanSchedule[]> {
+  const res = await secureFetch(apiUrl('/api/integrations/schedules'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch scan schedules: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function createSchedule(payload: ScanScheduleCreatePayload): Promise<ScanSchedule> {
+  const res = await secureFetch(apiUrl('/api/integrations/schedules'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to create scan schedule: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteSchedule(scheduleId: string): Promise<void> {
+  const res = await secureFetch(apiUrl(`/api/integrations/schedules/${scheduleId}`), {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to delete scan schedule: ${res.statusText}`);
+  }
+}
+
+export async function executeScanSchedule(scheduleId: string): Promise<{ message: string; schedule_id: string; last_run_at: string; next_run_at: string }> {
+  const res = await secureFetch(apiUrl(`/api/integrations/schedules/${scheduleId}/run`), {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to trigger scheduled scan: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchSiemEvents(): Promise<SiemLogItem[]> {
+  const res = await secureFetch(apiUrl('/api/integrations/siem/events'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch SIEM events: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------
+// Phase 12: Enterprise Governance & Multi-Tenant Workspaces
+// ---------------------------------------------------------
+
+export async function createWorkspace(payload: WorkspaceCreatePayload): Promise<Workspace> {
+  const res = await secureFetch(apiUrl('/api/workspaces'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to create workspace: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchWorkspaces(): Promise<Workspace[]> {
+  const res = await secureFetch(apiUrl('/api/workspaces'));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch workspaces: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchWorkspace(workspaceId: string): Promise<Workspace> {
+  const res = await secureFetch(apiUrl(`/api/workspaces/${workspaceId}`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch workspace: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
+  const res = await secureFetch(apiUrl(`/api/workspaces/${workspaceId}/members`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch workspace members: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function inviteWorkspaceMember(
+  workspaceId: string,
+  payload: WorkspaceInvitePayload
+): Promise<WorkspaceMember> {
+  const res = await secureFetch(apiUrl(`/api/workspaces/${workspaceId}/members`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to invite member: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function updateWorkspaceMemberRole(
+  workspaceId: string,
+  userId: string,
+  role: WorkspaceRole
+): Promise<WorkspaceMember> {
+  const res = await secureFetch(apiUrl(`/api/workspaces/${workspaceId}/members/${userId}`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to update member role: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function removeWorkspaceMember(workspaceId: string, userId: string): Promise<void> {
+  const res = await secureFetch(apiUrl(`/api/workspaces/${workspaceId}/members/${userId}`), {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to remove member: ${res.statusText}`);
+  }
+}
+
+export async function fetchWorkspaceAuditLogs(workspaceId: string): Promise<WorkspaceAuditLog[]> {
+  const res = await secureFetch(apiUrl(`/api/workspaces/${workspaceId}/audit-logs`));
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch audit logs: ${res.statusText}`);
   }
   return res.json();
 }

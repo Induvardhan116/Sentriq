@@ -1,13 +1,22 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { AlertOctagon, ArrowLeft, Shield } from 'lucide-react';
 import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
+import { Sidebar, SidebarTab } from './components/Sidebar';
 import { SystemStatusCard } from './components/SystemStatusCard';
 import { PhaseRoadmapCard } from './components/PhaseRoadmapCard';
 import { ProjectList } from './components/ProjectList';
 import { CreateProjectModal } from './components/CreateProjectModal';
 import { ScanDetailView } from './components/ScanDetailView';
 import { ProjectDetailView } from './components/ProjectDetailView';
+import { FindingsHubView } from './components/FindingsHubView';
+import { RiskAnalyticsView } from './components/RiskAnalyticsView';
+import { RepoSecurityView } from './components/RepoSecurityView';
+import { ApiSecurityView } from './components/ApiSecurityView';
+import { CloudSecurityView } from './components/CloudSecurityView';
+import { ReportsView } from './components/ReportsView';
+import { SettingsView } from './components/SettingsView';
+import { IntegrationsView } from './components/IntegrationsView';
+import { WorkspacesView } from './components/WorkspacesView';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
 import { ForgotPasswordPage } from './components/ForgotPasswordPage';
@@ -142,10 +151,30 @@ const AppContent: React.FC = () => {
   }
 
   // Determine active sidebar tab
-  const currentTab: 'overview' | 'projects' =
-    route.view === 'overview' ? 'overview' : 'projects';
+  const currentTab: SidebarTab =
+    route.view === 'overview'
+      ? 'overview'
+      : route.view === 'findings'
+      ? 'findings'
+      : route.view === 'analytics'
+      ? 'analytics'
+      : route.view === 'repositories' || route.view === 'repository'
+      ? 'repositories'
+      : route.view === 'api-security'
+      ? 'api-security'
+      : route.view === 'cloud-security'
+      ? 'cloud-security'
+      : route.view === 'reports'
+      ? 'reports'
+      : route.view === 'settings'
+      ? 'settings'
+      : route.view === 'integrations'
+      ? 'integrations'
+      : route.view === 'workspaces'
+      ? 'workspaces'
+      : 'projects';
 
-  const handleSelectTab = (tab: 'overview' | 'projects') => {
+  const handleSelectTab = (tab: SidebarTab) => {
     navigate({ view: tab });
   };
 
@@ -183,6 +212,31 @@ const AppContent: React.FC = () => {
                 <ArrowLeft size={14} /> Back to Projects
               </button>
             </div>
+          ) : route.view === 'findings' ? (
+            <FindingsHubView
+              initialFindingId={route.findingId}
+              onNavigateScan={handleSelectScan}
+              onNavigateProject={handleSelectProject}
+            />
+          ) : route.view === 'analytics' ? (
+            <RiskAnalyticsView
+              onNavigateProject={handleSelectProject}
+              onNavigateFindings={() => navigate({ view: 'findings' })}
+            />
+          ) : route.view === 'repositories' || route.view === 'repository' ? (
+            <RepoSecurityView />
+          ) : route.view === 'api-security' ? (
+            <ApiSecurityView />
+          ) : route.view === 'cloud-security' ? (
+            <CloudSecurityView />
+          ) : route.view === 'reports' ? (
+            <ReportsView />
+          ) : route.view === 'settings' ? (
+            <SettingsView />
+          ) : route.view === 'integrations' ? (
+            <IntegrationsView />
+          ) : route.view === 'workspaces' ? (
+            <WorkspacesView />
           ) : route.view === 'scan' ? (
             <ScanDetailView
               scanId={route.scanId}

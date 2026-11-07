@@ -36,25 +36,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [refreshUser]);
 
   const login = async (credentials: LoginPayload) => {
-    setIsLoading(true);
-    try {
-      const response = await authLogin(credentials);
-      setUser(response);
-      applyCsrfToken(response.csrf_token);
-    } finally {
-      setIsLoading(false);
-    }
+    const response = await authLogin(credentials);
+    setUser(response);
+    applyCsrfToken(response.csrf_token);
   };
 
   const register = async (payload: RegisterPayload) => {
-    setIsLoading(true);
-    try {
-      const response = await authRegister(payload);
-      setUser(response);
-      applyCsrfToken(response.csrf_token);
-    } finally {
-      setIsLoading(false);
-    }
+    const response = await authRegister(payload);
+    setUser(response);
+    applyCsrfToken(response.csrf_token);
   };
 
   const logout = async () => {

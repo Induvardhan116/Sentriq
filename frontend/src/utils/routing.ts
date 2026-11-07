@@ -3,6 +3,16 @@ export type AppRoute =
   | { view: 'projects' }
   | { view: 'project'; projectId: string }
   | { view: 'scan'; scanId: string; findingId?: string }
+  | { view: 'findings'; findingId?: string }
+  | { view: 'analytics' }
+  | { view: 'repositories' }
+  | { view: 'repository'; repoId: string }
+  | { view: 'api-security' }
+  | { view: 'cloud-security' }
+  | { view: 'reports' }
+  | { view: 'settings' }
+  | { view: 'integrations' }
+  | { view: 'workspaces' }
   | { view: 'login' }
   | { view: 'register' }
   | { view: 'forgot-password' }
@@ -61,6 +71,50 @@ export function parseRoute(
 
   if (first === 'verify-email' || first === 'verify') {
     return { view: 'verify-email', token };
+  }
+
+  if (first === 'findings' || first === 'finding') {
+    const findingIdParam = segments[1] || findingId;
+    return { view: 'findings', findingId: findingIdParam || undefined };
+  }
+
+  if (first === 'analytics' || first === 'risk') {
+    return { view: 'analytics' };
+  }
+
+  if (first === 'api-security' || first === 'apisec' || first === 'api_security') {
+    return { view: 'api-security' };
+  }
+
+  if (first === 'cloud-security' || first === 'cspm' || first === 'cloud') {
+    return { view: 'cloud-security' };
+  }
+
+  if (first === 'reports' || first === 'report' || first === 'export') {
+    return { view: 'reports' };
+  }
+
+  if (first === 'settings' || first === 'config' || first === 'profile') {
+    return { view: 'settings' };
+  }
+
+  if (first === 'integrations' || first === 'integration' || first === 'webhooks') {
+    return { view: 'integrations' };
+  }
+
+  if (first === 'workspaces' || first === 'workspace' || first === 'governance') {
+    return { view: 'workspaces' };
+  }
+
+  if (first === 'repositories' || first === 'repos' || first === 'repo') {
+    if (segments.length === 1) {
+      return { view: 'repositories' };
+    }
+    const repoId = segments.slice(1).join('/').trim();
+    if (!repoId) {
+      return { view: 'repositories' };
+    }
+    return { view: 'repository', repoId };
   }
 
   if (first === 'overview' || first === 'dashboard') {
@@ -130,6 +184,28 @@ export function routeToHash(route: AppRoute): string {
   switch (route.view) {
     case 'overview':
       return '#/overview';
+    case 'findings':
+      return route.findingId
+        ? `#/findings?finding=${encodeURIComponent(route.findingId)}`
+        : '#/findings';
+    case 'analytics':
+      return '#/analytics';
+    case 'repositories':
+      return '#/repositories';
+    case 'repository':
+      return `#/repo/${encodeURIComponent(route.repoId)}`;
+    case 'api-security':
+      return '#/api-security';
+    case 'cloud-security':
+      return '#/cloud-security';
+    case 'reports':
+      return '#/reports';
+    case 'settings':
+      return '#/settings';
+    case 'integrations':
+      return '#/integrations';
+    case 'workspaces':
+      return '#/workspaces';
     case 'projects':
       return '#/projects';
     case 'project':
